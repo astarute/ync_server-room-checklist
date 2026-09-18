@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a56db">
+<title>서버실 점검</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-title">
+    <span class="dot" id="statusDot"></span>
+    서버실 점검
+  </div>
+  <button id="settingsBtn" class="icon-btn" aria-label="설정">⚙️</button>
+</header>
+
+<main id="app">
+
+  <!-- 화면 1: 최초 이름 등록 -->
+  <section id="screen-onboard" class="screen hidden">
+    <div class="card">
+      <h1>처음 오셨네요</h1>
+      <p class="muted">이 기기에서 점검할 때 표시될 이름을 등록해주세요. 이후엔 자동으로 기억됩니다.</p>
+      <label class="field">
+        <span>이름</span>
+        <input type="text" id="onboardName" placeholder="예: 김철수" autocomplete="name">
+      </label>
+      <label class="field">
+        <span>소속(선택)</span>
+        <input type="text" id="onboardTeam" placeholder="예: 전산팀">
+      </label>
+      <button id="onboardSaveBtn" class="btn btn-primary btn-block">등록하고 시작하기</button>
+    </div>
+  </section>
+
+  <!-- 화면 2: 메인 -->
+  <section id="screen-home" class="screen hidden">
+    <div class="card user-card">
+      <div>
+        <div class="muted small">현재 로그인</div>
+        <div class="user-name" id="homeUserName">-</div>
+      </div>
+      <div class="now-clock" id="nowClock">--:--</div>
+    </div>
+
+    <div class="card scan-card">
+      <h2>서버실 도착 확인</h2>
+      <p class="muted">서버실 입구의 NFC 태그에 휴대폰을 가까이 대주세요. 태그를 인식하면 자동으로 시간과 이름이 기록됩니다.</p>
+      <button id="scanBtn" class="btn btn-primary btn-block btn-large">
+        <span class="btn-icon">📶</span> NFC 태그 스캔 시작
+      </button>
+      <button id="manualBtn" class="btn btn-ghost btn-block">NFC를 쓸 수 없나요? 수동으로 확인</button>
+      <p id="scanStatus" class="scan-status"></p>
+    </div>
+
+    <div class="card">
+      <div class="section-header">
+        <h2>최근 점검 기록</h2>
+        <button id="refreshBtn" class="icon-btn" aria-label="새로고침">🔄</button>
+      </div>
+      <div id="historyList" class="history-list">
+        <p class="muted small">기록을 불러오는 중...</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 화면 3: 체크리스트 입력 -->
+  <section id="screen-checklist" class="screen hidden">
+    <div class="card confirm-card">
+      <div class="confirm-row">
+        <span class="badge badge-ok">✔ 위치 확인됨</span>
+      </div>
+      <div class="confirm-grid">
+        <div>
+          <div class="muted small">점검자</div>
+          <div id="ckUser">-</div>
+        </div>
+        <div>
+          <div class="muted small">일시</div>
+          <div id="ckTime">-</div>
+        </div>
+        <div>
+          <div class="muted small">태그 위치</div>
+          <div id="ckTag">-</div>
+        </div>
+      </div>
+    </div>
+
+    <form id="checklistForm" class="card">
+      <h2>점검 항목</h2>
+
+      <label class="field">
+        <span>온도 (°C) <span class="req">필수</span></span>
+        <input type="number" step="0.1" id="fTemp" inputmode="decimal" placeholder="예: 22.5" required>
+      </label>
+
+      <label class="field">
+        <span>습도 (%) <span class="opt">선택</span></span>
+        <input type="number" step="0.1" id="fHumidity" inputmode="decimal" placeholder="예: 45">
+      </label>
+
+      <fieldset class="field">
+        <legend>장비 상태 점검</legend>
+        <label class="checkbox-row">
+          <input type="checkbox" id="eqUps" checked>
+          <span>UPS(무정전 전원장치) 정상</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="eqAircon" checked>
+          <span>항온항습기/에어컨 정상 가동</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="eqFire" checked>
+          <span>소화 설비 정상</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="eqNoise" checked>
+          <span>이상 소음/냄새 없음</span>
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="eqDoor" checked>
+          <span>출입문/잠금장치 정상</span>
+        </label>
+      </fieldset>
+
+      <label class="field">
+        <span>이상 사항 메모 <span class="opt">선택</span></span>
+        <textarea id="fNote" rows="3" placeholder="이상이 있다면 자세히 적어주세요"></textarea>
+      </label>
+
+      <label class="field">
+        <span>사진 첨부 <span class="opt">선택, 이상 발생 시 권장</span></span>
+        <input type="file" id="fPhoto" accept="image/*" capture="environment">
+        <img id="photoPreview" class="photo-preview hidden" alt="첨부 사진 미리보기">
+      </label>
+
+      <button type="submit" id="submitBtn" class="btn btn-primary btn-block btn-large">점검 결과 제출</button>
+      <button type="button" id="cancelBtn" class="btn btn-ghost btn-block">취소</button>
+      <p id="submitStatus" class="scan-status"></p>
+    </form>
+  </section>
+
+  <!-- 화면 4: 완료 -->
+  <section id="screen-done" class="screen hidden">
+    <div class="card done-card">
+      <div class="done-icon">✅</div>
+      <h1>제출 완료</h1>
+      <p class="muted">점검 기록이 저장되었습니다.</p>
+      <button id="doneHomeBtn" class="btn btn-primary btn-block">확인</button>
+    </div>
+  </section>
+
+  <!-- 설정 -->
+  <section id="screen-settings" class="screen hidden">
+    <div class="card">
+      <h1>설정</h1>
+      <label class="field">
+        <span>이름</span>
+        <input type="text" id="setName">
+      </label>
+      <label class="field">
+        <span>소속</span>
+        <input type="text" id="setTeam">
+      </label>
+      <label class="field">
+        <span>서버 저장 주소 (Apps Script 웹앱 URL)</span>
+        <input type="text" id="setEndpoint" placeholder="https://script.google.com/macros/s/xxxx/exec">
+      </label>
+      <label class="field">
+        <span>등록된 NFC 태그 (관리자용)</span>
+        <div id="tagList" class="tag-list"></div>
+        <button type="button" id="clearTagsBtn" class="btn btn-ghost">등록된 태그 초기화</button>
+      </label>
+      <button id="setSaveBtn" class="btn btn-primary btn-block">저장</button>
+      <button id="setBackBtn" class="btn btn-ghost btn-block">뒤로</button>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
