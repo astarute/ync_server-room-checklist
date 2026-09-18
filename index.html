@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1a56db">
+<meta name="theme-color" content="#1e2a6b">
 <title>서버실 점검</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -12,12 +12,23 @@
 <body>
 
 <header class="topbar">
+  <button id="menuBtn" class="icon-btn" aria-label="메뉴">☰</button>
   <div class="topbar-title">
     <span class="dot" id="statusDot"></span>
     서버실 점검
   </div>
   <button id="settingsBtn" class="icon-btn" aria-label="설정">⚙️</button>
 </header>
+
+<div id="drawerOverlay" class="drawer-overlay hidden"></div>
+<nav id="drawer" class="drawer hidden" aria-label="메뉴">
+  <div class="drawer-header">
+    영남이공대학교
+    <div class="drawer-sub">서버실 점검</div>
+  </div>
+  <button type="button" class="drawer-item" id="drawerHome">🏠 홈</button>
+  <button type="button" class="drawer-item" id="drawerSettings">⚙️ 설정</button>
+</nav>
 
 <main id="app">
 

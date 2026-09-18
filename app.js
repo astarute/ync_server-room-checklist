@@ -15,6 +15,9 @@ const LS = {
   historyCache: 'src_history_cache',
 };
 
+// 관리자용: 여기에 배포한 Apps Script 웹앱 주소를 미리 채워두면, 사용자가 설정에서
+// 따로 입력하지 않아도 자동으로 이 주소를 씁니다. 비워두면(빈 문자열) 기존처럼
+// 각자 기기의 설정 화면에서 입력해야 합니다.
 const DEFAULT_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzpXMmpLUMaGom-CtWO7jvj-H9Cxx2B58MyDwZL3q_7ru4o7VprSueVd9F-vYq3eP6P/exec';
 
 const qs = (id) => document.getElementById(id);
@@ -127,6 +130,10 @@ function bindEvents() {
       toast('태그 목록을 초기화했습니다.');
     }
   });
+  qs('menuBtn').addEventListener('click', openDrawer);
+  qs('drawerOverlay').addEventListener('click', closeDrawer);
+  qs('drawerHome').addEventListener('click', () => { closeDrawer(); showScreen('screen-home'); });
+  qs('drawerSettings').addEventListener('click', () => { closeDrawer(); openSettings(); });
   qs('scanBtn').addEventListener('click', startNfcScan);
   qs('manualBtn').addEventListener('click', startManualCheckIn);
   qs('refreshBtn').addEventListener('click', loadHistory);
@@ -142,6 +149,15 @@ function onOnboardSave() {
   localStorage.setItem(LS.name, name);
   localStorage.setItem(LS.team, qs('onboardTeam').value.trim());
   init();
+}
+
+function openDrawer() {
+  qs('drawer').classList.remove('hidden');
+  qs('drawerOverlay').classList.remove('hidden');
+}
+function closeDrawer() {
+  qs('drawer').classList.add('hidden');
+  qs('drawerOverlay').classList.add('hidden');
 }
 
 function openSettings() {
