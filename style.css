@@ -351,3 +351,52 @@ fieldset.field legend{
   box-shadow:0 4px 14px rgba(0,0,0,0.2);
 }
 .toast.hidden{display:none;}
+
+/* ==================================================================
+   PC(넓은 화면) 전용 레이아웃 — 기능은 동일, 배치만 더 넓고 시원하게.
+   모바일(기본 스타일)은 위쪽 규칙 그대로 사용됩니다.
+   ================================================================== */
+@media (min-width:860px){
+  .layout{
+    display:flex;
+    align-items:flex-start;
+  }
+
+  /* 메뉴를 접었다 펴는 대신, 옆에 항상 고정된 사이드바로 표시 */
+  #menuBtn{display:none;}
+  .drawer-overlay{display:none !important;}
+  .drawer{
+    position:sticky;
+    top:0;
+    left:auto;
+    bottom:auto;
+    height:100vh;
+    display:flex !important;
+    flex-shrink:0;
+    box-shadow:none;
+    border-right:1px solid var(--border);
+  }
+
+  main{
+    flex:1;
+    max-width:1040px;
+    margin:0;
+    padding:28px 36px 56px;
+  }
+
+  /* 최근 점검 기록: 세로 한 줄 목록 대신 여러 개를 격자로 나란히 */
+  .history-list{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
+    gap:10px;
+  }
+
+  /* 입력폼 화면들은 옆으로 너무 길어지지 않게 적당한 너비로 유지 */
+  #screen-onboard .card,
+  #screen-server .card,
+  #screen-checklist .card,
+  #screen-settings .card,
+  #screen-done .card{
+    max-width:560px;
+  }
+}
