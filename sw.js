@@ -1,7 +1,7 @@
 // 서버실 점검 앱 서비스워커 — 오프라인에서도 앱 껍데기가 뜨도록 정적 파일을 캐싱합니다.
 // 실제 점검 기록 전송(fetch to Apps Script)은 캐싱하지 않고 항상 네트워크로 보냅니다.
 
-const CACHE_NAME = 'server-room-checklist-v1';
+const CACHE_NAME = 'server-room-checklist-v2';
 const PRECACHE_URLS = [
   './',
   './index.html',
