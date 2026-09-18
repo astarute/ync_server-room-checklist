@@ -7,7 +7,6 @@
  */
 
 const LS = {
-  const DEFAULT_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzpXMmpLUMaGom-CtWO7jvj-H9Cxx2B58MyDwZL3q_7ru4o7VprSueVd9F-vYq3eP6P/exec';
   name: 'src_user_name',
   team: 'src_user_team',
   endpoint: 'src_endpoint',
@@ -15,6 +14,8 @@ const LS = {
   pending: 'src_pending',
   historyCache: 'src_history_cache',
 };
+
+const DEFAULT_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzpXMmpLUMaGom-CtWO7jvj-H9Cxx2B58MyDwZL3q_7ru4o7VprSueVd9F-vYq3eP6P/exec';
 
 const qs = (id) => document.getElementById(id);
 
