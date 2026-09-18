@@ -27,6 +27,21 @@
     <div class="drawer-sub">서버실 점검</div>
   </div>
   <button type="button" class="drawer-item" id="drawerHome">🏠 홈</button>
+
+  <button type="button" class="drawer-item drawer-parent" id="drawerRoomsToggle">
+    <span>🏫 강의실</span>
+    <span class="drawer-caret" id="roomsCaret">▾</span>
+  </button>
+  <div id="roomsSubmenu" class="drawer-submenu hidden">
+    <button type="button" class="drawer-subitem" data-room="멘토링 A">멘토링 A</button>
+    <button type="button" class="drawer-subitem" data-room="멘토링 B">멘토링 B</button>
+    <button type="button" class="drawer-subitem" data-room="해킹실습실">해킹실습실</button>
+    <button type="button" class="drawer-subitem" data-room="보안관제실">보안관제실</button>
+    <button type="button" class="drawer-subitem" data-room="클라우드 보안실">클라우드 보안실</button>
+    <button type="button" class="drawer-subitem" data-room="정보보안실습실">정보보안실습실</button>
+  </div>
+
+  <button type="button" class="drawer-item" id="drawerServerRoom">🖥️ 서버실</button>
   <button type="button" class="drawer-item" id="drawerSettings">⚙️ 설정</button>
 </nav>
 
@@ -42,8 +57,8 @@
         <input type="text" id="onboardName" placeholder="예: 김철수" autocomplete="name">
       </label>
       <label class="field">
-        <span>소속(선택)</span>
-        <input type="text" id="onboardTeam" placeholder="예: 전산팀">
+        <span>직책(선택)</span>
+        <input type="text" id="onboardTeam" placeholder="예: 팀장, 근로학생">
       </label>
       <button id="onboardSaveBtn" class="btn btn-primary btn-block">등록하고 시작하기</button>
     </div>
@@ -59,16 +74,6 @@
       <div class="now-clock" id="nowClock">--:--</div>
     </div>
 
-    <div class="card scan-card">
-      <h2>서버실 도착 확인</h2>
-      <p class="muted">서버실 입구의 NFC 태그에 휴대폰을 가까이 대주세요. 태그를 인식하면 자동으로 시간과 이름이 기록됩니다.</p>
-      <button id="scanBtn" class="btn btn-primary btn-block btn-large">
-        <span class="btn-icon">📶</span> NFC 태그 스캔 시작
-      </button>
-      <button id="manualBtn" class="btn btn-ghost btn-block">NFC를 쓸 수 없나요? 수동으로 확인</button>
-      <p id="scanStatus" class="scan-status"></p>
-    </div>
-
     <div class="card">
       <div class="section-header">
         <h2>최근 점검 기록</h2>
@@ -77,6 +82,19 @@
       <div id="historyList" class="history-list">
         <p class="muted small">기록을 불러오는 중...</p>
       </div>
+    </div>
+  </section>
+
+  <!-- 화면 2-1: 서버실 (NFC 스캔 전용) -->
+  <section id="screen-server" class="screen hidden">
+    <div class="card scan-card">
+      <h2>서버실 도착 확인</h2>
+      <p class="muted">서버실 입구의 NFC 태그에 휴대폰을 가까이 대주세요. 태그를 인식하면 자동으로 시간과 이름이 기록됩니다.</p>
+      <button id="scanBtn" class="btn btn-primary btn-block btn-large">
+        <span class="btn-icon">📶</span> NFC 태그 스캔 시작
+      </button>
+      <button id="manualBtn" class="btn btn-ghost btn-block">NFC를 쓸 수 없나요? 수동으로 확인</button>
+      <p id="scanStatus" class="scan-status"></p>
     </div>
   </section>
 
@@ -175,12 +193,8 @@
         <input type="text" id="setName">
       </label>
       <label class="field">
-        <span>소속</span>
+        <span>직책</span>
         <input type="text" id="setTeam">
-      </label>
-      <label class="field">
-        <span>서버 저장 주소 (Apps Script 웹앱 URL)</span>
-        <input type="text" id="setEndpoint" placeholder="https://script.google.com/macros/s/xxxx/exec">
       </label>
       <label class="field">
         <span>등록된 NFC 태그 (관리자용)</span>

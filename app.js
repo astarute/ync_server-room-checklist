@@ -132,8 +132,17 @@ function bindEvents() {
   });
   qs('menuBtn').addEventListener('click', openDrawer);
   qs('drawerOverlay').addEventListener('click', closeDrawer);
-  qs('drawerHome').addEventListener('click', () => { closeDrawer(); showScreen('screen-home'); });
+  qs('drawerHome').addEventListener('click', () => { closeDrawer(); showScreen('screen-home'); loadHistory(); });
+  qs('drawerServerRoom').addEventListener('click', () => { closeDrawer(); showScreen('screen-server'); });
   qs('drawerSettings').addEventListener('click', () => { closeDrawer(); openSettings(); });
+  qs('drawerRoomsToggle').addEventListener('click', toggleRoomsSubmenu);
+  document.querySelectorAll('.drawer-subitem').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const room = btn.dataset.room;
+      closeDrawer();
+      openRoomChecklist(room);
+    });
+  });
   qs('scanBtn').addEventListener('click', startNfcScan);
   qs('manualBtn').addEventListener('click', startManualCheckIn);
   qs('refreshBtn').addEventListener('click', loadHistory);
@@ -160,11 +169,20 @@ function closeDrawer() {
   qs('drawerOverlay').classList.add('hidden');
 }
 
+function toggleRoomsSubmenu() {
+  qs('roomsSubmenu').classList.toggle('hidden');
+  qs('roomsCaret').classList.toggle('open');
+}
+
+// 강의실 목록에서 방을 선택하면, NFC 스캔 없이 바로 체크리스트 입력 화면으로 이동합니다.
+function openRoomChecklist(roomLabel) {
+  openChecklist({ tagId: '강의실:' + roomLabel, tagLabel: roomLabel, method: 'manual' });
+}
+
 function openSettings() {
   const user = getUser();
   qs('setName').value = user.name;
   qs('setTeam').value = user.team;
-  qs('setEndpoint').value = getEndpoint();
   renderTagList();
   showScreen('screen-settings');
 }
@@ -197,7 +215,6 @@ function onSettingsSave() {
   if (!name) { toast('이름을 입력해주세요.'); return; }
   localStorage.setItem(LS.name, name);
   localStorage.setItem(LS.team, qs('setTeam').value.trim());
-  localStorage.setItem(LS.endpoint, qs('setEndpoint').value.trim());
   qs('homeUserName').textContent = name + (qs('setTeam').value.trim() ? ` · ${qs('setTeam').value.trim()}` : '');
   toast('저장되었습니다.');
   showScreen('screen-home');

@@ -114,6 +114,43 @@ html,body{
 .drawer-item:active{
   background:#f1f5f9;
 }
+.drawer-parent{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.drawer-caret{
+  color:var(--muted);
+  font-size:12px;
+  transition:transform 0.15s ease;
+}
+.drawer-caret.open{
+  transform:rotate(180deg);
+}
+.drawer-submenu{
+  display:flex;
+  flex-direction:column;
+  background:#fafbfc;
+}
+.drawer-submenu.hidden{display:none;}
+.drawer-subitem{
+  display:block;
+  width:100%;
+  text-align:left;
+  background:none;
+  border:none;
+  padding:12px 18px 12px 40px;
+  font-size:14px;
+  color:var(--text);
+  cursor:pointer;
+}
+.drawer-subitem::before{
+  content:"› ";
+  color:var(--muted);
+}
+.drawer-subitem:active{
+  background:#f1f5f9;
+}
 
 main{
   max-width:520px;
