@@ -158,6 +158,7 @@ function registerServiceWorker() {
 
 function bindEvents() {
   qs('onboardSaveBtn').addEventListener('click', onOnboardSave);
+  qs('adminLoginForm').addEventListener('submit', onAdminLoginSubmit);
   qs('setBackBtn').addEventListener('click', () => showScreen('screen-home'));
   qs('setSaveBtn').addEventListener('click', onSettingsSave);
   qs('setLogoutBtn').addEventListener('click', onLogout);
@@ -348,6 +349,66 @@ async function handleGoogleCredential(response) {
   } catch (err) {
     statusEl.className = 'scan-status error';
     statusEl.textContent = '네트워크 오류로 로그인 확인에 실패했습니다. 다시 시도해주세요.';
+  }
+}
+
+/* ---------------- 관리자 아이디/비밀번호 로그인 ----------------
+ * 구글 로그인 없이도 쓸 수 있게 만든 보조 로그인입니다. 아이디/비밀번호는 화면(이 파일)에는
+ * 전혀 들어있지 않고, 입력값을 서버(Apps Script)로 보내서 거기서만 맞는지 확인합니다.
+ * (F12로 이 파일을 봐도 실제 비밀번호는 어디에도 보이지 않습니다.)
+ */
+async function onAdminLoginSubmit(e) {
+  e.preventDefault();
+
+  const id = qs('adminId').value.trim();
+  const pw = qs('adminPw').value;
+  const statusEl = qs('adminLoginStatus');
+  const btn = qs('adminLoginBtn');
+
+  if (!id || !pw) {
+    statusEl.className = 'scan-status error';
+    statusEl.textContent = '아이디와 비밀번호를 입력해주세요.';
+    return;
+  }
+
+  const endpoint = getEndpoint();
+  if (!endpoint) {
+    statusEl.className = 'scan-status error';
+    statusEl.textContent = '서버 주소가 설정되지 않아 로그인을 확인할 수 없습니다.';
+    return;
+  }
+
+  btn.disabled = true;
+  statusEl.className = 'scan-status';
+  statusEl.textContent = '로그인 확인 중...';
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'adminLogin', id, pw }),
+    });
+    const data = await res.json();
+
+    if (!data.ok) {
+      statusEl.className = 'scan-status error';
+      statusEl.textContent = data.error === 'admin_not_configured'
+        ? '관리자 계정이 아직 설정되지 않았습니다. 관리자에게 문의해주세요.'
+        : '아이디 또는 비밀번호가 올바르지 않습니다.';
+      btn.disabled = false;
+      return;
+    }
+
+    // 관리자는 직책이 이미 정해져 있어(항상 "관리자") 직책 선택 단계 없이 바로 로그인 처리합니다.
+    // 이메일이 없는 계정이라, 입력한 아이디를 식별자로 대신 저장합니다.
+    localStorage.setItem(LS.name, data.name || '관리자');
+    localStorage.setItem(LS.email, id);
+    localStorage.setItem(LS.team, data.position || '');
+    init();
+  } catch (err) {
+    statusEl.className = 'scan-status error';
+    statusEl.textContent = '네트워크 오류로 로그인 확인에 실패했습니다. 다시 시도해주세요.';
+    btn.disabled = false;
   }
 }
 

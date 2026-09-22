@@ -53,6 +53,23 @@
   <!-- 화면 1: 최초 로그인/등록 -->
   <section id="screen-onboard" class="screen hidden">
     <div class="card" id="onboardStep1">
+      <h1 class="login-title">로그인</h1>
+
+      <form id="adminLoginForm" class="admin-login-form">
+        <div class="login-field">
+          <input type="text" id="adminId" placeholder=" " autocomplete="username">
+          <label for="adminId">ID</label>
+        </div>
+        <div class="login-field">
+          <input type="password" id="adminPw" placeholder=" " autocomplete="current-password">
+          <label for="adminPw">비밀번호</label>
+        </div>
+        <button type="submit" id="adminLoginBtn" class="btn btn-primary btn-block">로그인</button>
+      </form>
+      <p id="adminLoginStatus" class="scan-status"></p>
+
+      <div class="login-divider">또는</div>
+
       <div id="gsiButtonContainer" class="gsi-btn-wrap"></div>
       <p id="onboardLoginStatus" class="scan-status"></p>
     </div>

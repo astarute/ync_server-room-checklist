@@ -28,6 +28,13 @@ const ALLOWED_EMAIL_DOMAIN = 'ync.ac.kr';
 // (비워두면 발급 대상(aud) 검증을 건너뛰므로, 반드시 채워 넣는 것을 권장합니다.)
 const GOOGLE_CLIENT_ID = '904845440598-a9sul7p4reug9rcre031im6e0mjdunce.apps.googleusercontent.com';
 
+// 관리자(비상용) 로그인 계정: 구글 로그인 없이 이 아이디/비밀번호로도 로그인할 수 있게 합니다.
+// 이 값은 서버(앱스 스크립트) 쪽에만 저장되고 화면(브라우저)으로는 절대 전달되지 않으므로,
+// F12(개발자 도구)로 봐도 보이지 않습니다. 아래 두 값을 원하는 아이디/비밀번호로 바꾸고
+// 배포 > 배포 관리 > 새 버전으로 다시 배포해야 반영됩니다.
+const ADMIN_ID = 'admin';
+const ADMIN_PW = 'a1234567!';
+
 // 직책 자동 채우기용 시트: 같은 스프레드시트(SHEET_ID) 안에 이 이름의 탭을 만들고
 // A열=이메일, B열=이름, C열=직책 형태로 한 줄씩 채워두면, 로그인할 때 이메일로 찾아서
 // 직책을 자동으로 채워줍니다. 시트가 없거나 명단에 없는 사람은 빈 값을 돌려주고,
@@ -140,6 +147,20 @@ function getStaffPosition_(email, name) {
   }
 }
 
+// 관리자 아이디/비밀번호가 맞는지 확인합니다. 위의 ADMIN_ID/ADMIN_PW와 정확히 일치해야 통과됩니다.
+function verifyAdminLogin_(id, pw) {
+  const inputId = String(id || '').trim();
+  const inputPw = String(pw || '');
+  if (!inputId || !inputPw) return { ok: false, error: 'missing_credentials' };
+  if (ADMIN_ID.startsWith('여기에') || ADMIN_PW.startsWith('여기에')) {
+    return { ok: false, error: 'admin_not_configured' };
+  }
+  if (inputId !== ADMIN_ID || inputPw !== ADMIN_PW) {
+    return { ok: false, error: 'invalid_credentials' };
+  }
+  return { ok: true, email: '', name: '관리자', position: '' };
+}
+
 function jsonOut_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
@@ -171,6 +192,10 @@ function doPost(e) {
 
     if (body.action === 'login') {
       return jsonOut_(verifyGoogleIdToken_(body.idToken));
+    }
+
+    if (body.action === 'adminLogin') {
+      return jsonOut_(verifyAdminLogin_(body.id, body.pw));
     }
 
     if (body.action !== 'submit' || !body.record) {
