@@ -109,6 +109,7 @@
         </div>
       </div>
 
+      <!-- PC: 카드 안에 제목 + 날짜별 가로 그리드 -->
       <div class="card records-card">
         <div class="section-header">
           <h2>최근 점검 기록</h2>
@@ -120,7 +121,24 @@
             </svg>
           </button>
         </div>
-        <div id="historyList">
+        <div id="historyPcBody">
+          <p class="muted small">기록을 불러오는 중...</p>
+        </div>
+      </div>
+
+      <!-- 모바일: 상자 없이 제목 + 새로고침, 그 아래 날짜별 버튼(아코디언) -->
+      <div class="mobile-history">
+        <div class="section-header-plain">
+          <h2>최근 점검 기록</h2>
+          <button id="refreshBtnMobile" class="icon-btn" aria-label="새로고침">
+            <svg id="refreshIconMobile" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 12a8 8 0 0 1 14.5-4.6M20 12a8 8 0 0 1-14.5 4.6"/>
+              <polyline points="18.5 3 18.5 8 13.5 8"/>
+              <polyline points="5.5 21 5.5 16 10.5 16"/>
+            </svg>
+          </button>
+        </div>
+        <div id="historyMobileBody">
           <p class="muted small">기록을 불러오는 중...</p>
         </div>
       </div>
@@ -241,10 +259,6 @@
       <label class="field">
         <span>이메일</span>
         <input type="text" id="setEmail" disabled>
-      </label>
-      <label class="field">
-        <span>직책</span>
-        <input type="text" id="setTeam">
       </label>
       <button id="setSaveBtn" class="btn btn-primary btn-block">저장</button>
       <button id="setLogoutBtn" class="btn btn-ghost btn-block">로그아웃</button>

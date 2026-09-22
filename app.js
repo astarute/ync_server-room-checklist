@@ -185,9 +185,15 @@ function bindEvents() {
   qs('manualBtn').addEventListener('click', () => startManualCheckIn('server'));
   qs('scanBtn2').addEventListener('click', () => startNfcScan('equipment'));
   qs('manualBtn2').addEventListener('click', () => startManualCheckIn('equipment'));
+  // PC용, 모바일용 새로고침 버튼 둘 다 같은 동작을 합니다 (화면 폭에 따라 둘 중 하나만 보임).
   qs('refreshBtn').addEventListener('click', () => { spinRefreshIcon(); loadHistory(); });
-  qs('refreshIcon').addEventListener('transitionend', (e) => {
-    if (e.propertyName === 'transform') qs('refreshBtn').disabled = false;
+  qs('refreshBtnMobile').addEventListener('click', () => { spinRefreshIcon(); loadHistory(); });
+  ['refreshIcon', 'refreshIconMobile'].forEach((iconId) => {
+    qs(iconId).addEventListener('transitionend', (e) => {
+      if (e.propertyName !== 'transform') return;
+      qs('refreshBtn').disabled = false;
+      qs('refreshBtnMobile').disabled = false;
+    });
   });
   qs('cancelBtn').addEventListener('click', () => showScreen('screen-home'));
   qs('doneHomeBtn').addEventListener('click', () => { showScreen('screen-home'); loadHistory(); });
@@ -220,8 +226,10 @@ function bindEvents() {
 let refreshRotation = 0;
 function spinRefreshIcon() {
   qs('refreshBtn').disabled = true;
+  qs('refreshBtnMobile').disabled = true;
   refreshRotation += 720;
   qs('refreshIcon').style.transform = `rotate(${refreshRotation}deg)`;
+  qs('refreshIconMobile').style.transform = `rotate(${refreshRotation}deg)`;
 }
 
 function onOnboardSave() {
@@ -439,15 +447,12 @@ function openSettings() {
   const user = getUser();
   qs('setName').value = user.name;
   qs('setEmail').value = user.email;
-  qs('setTeam').value = user.team;
   showScreen('screen-settings');
 }
 
+// 설정 화면에서 직책 입력칸을 없애서(이름/이메일처럼 읽기 전용 정보만 남음),
+// 이제 저장 버튼은 딱히 바꿀 값이 없어 확인 후 홈으로 돌아가는 역할만 합니다.
 function onSettingsSave() {
-  const team = qs('setTeam').value.trim();
-  localStorage.setItem(LS.team, team);
-  const user = getUser();
-  qs('homeUserName').textContent = user.name + (team ? ` · ${team}` : '');
   toast('저장되었습니다.');
   showScreen('screen-home');
   loadHistory();
@@ -684,12 +689,13 @@ async function flushPending() {
 /* ---------------- 최근 기록 ---------------- */
 
 async function loadHistory() {
-  const wrap = qs('historyList');
   const endpoint = getEndpoint();
   const pending = loadJSON(LS.pending, []);
 
   if (!endpoint) {
-    wrap.innerHTML = '<p class="muted small">설정에서 서버 저장 주소를 입력하면 최근 기록을 볼 수 있습니다.</p>';
+    const msg = '<p class="muted small">설정에서 서버 저장 주소를 입력하면 최근 기록을 볼 수 있습니다.</p>';
+    qs('historyPcBody').innerHTML = msg;
+    qs('historyMobileBody').innerHTML = msg;
     renderPendingBadge(pending);
     return;
   }
@@ -709,7 +715,9 @@ async function loadHistory() {
 
 function renderPendingBadge(pending) {
   if (pending.length) {
-    qs('historyList').innerHTML += `<p class="muted small">기기에 대기 중인 기록 ${pending.length}건 (온라인이 되면 자동 전송)</p>`;
+    const msg = `<p class="muted small">기기에 대기 중인 기록 ${pending.length}건 (온라인이 되면 자동 전송)</p>`;
+    qs('historyPcBody').innerHTML += msg;
+    qs('historyMobileBody').innerHTML += msg;
   }
 }
 
@@ -738,15 +746,24 @@ function dateKeyOf(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+// 홈 화면 "최근 점검 기록"은 PC와 모바일이 서로 다른 방식으로 보여줍니다.
+// - PC(historyPcBody): 카드 안에서 날짜별로 가로 그리드, 3건 넘으면 더보기/접기
+// - 모바일(historyMobileBody): 상자 밖 제목 + 날짜별로 독립된 버튼, 눌러야 그 날짜 기록이 펼쳐짐
+// 화면 폭에 따라 둘 중 하나만 CSS로 보이게 하고(.records-card / .mobile-history),
+// 데이터는 같은 records 배열로 둘 다 채워둡니다.
 function renderHistory(records, pending, offline) {
-  const wrap = qs('historyList');
-  wrap.innerHTML = '';
+  const pcBody = qs('historyPcBody');
+  const mobileBody = qs('historyMobileBody');
+  pcBody.innerHTML = '';
+  mobileBody.innerHTML = '';
 
   if (offline) {
-    const p = document.createElement('p');
-    p.className = 'muted small';
-    p.textContent = '네트워크 연결이 안 되어 마지막으로 불러온 기록을 표시합니다.';
-    wrap.appendChild(p);
+    [pcBody, mobileBody].forEach((wrap) => {
+      const p = document.createElement('p');
+      p.className = 'muted small';
+      p.textContent = '네트워크 연결이 안 되어 마지막으로 불러온 기록을 표시합니다.';
+      wrap.appendChild(p);
+    });
   }
 
   const todayKey = dateKeyOf(new Date());
@@ -756,20 +773,22 @@ function renderHistory(records, pending, offline) {
     const key = dateKeyOf(d);
     const isToday = key === todayKey;
     const dayRecords = records.filter((r) => recordDateKey(r) === key);
+    const labelText = `${isToday ? '오늘 · ' : ''}${formatDateLabel(key)}`;
 
-    const label = document.createElement('div');
-    label.className = 'section-label' + (isToday ? ' today' : '');
-    label.innerHTML = `${isToday ? '오늘 · ' : ''}${formatDateLabel(key)} <span class="count">${dayRecords.length}건</span>`;
-    wrap.appendChild(label);
+    /* ---- PC: 날짜 라벨 + 가로 그리드 (3건 넘으면 더보기/접기) ---- */
+    const pcLabel = document.createElement('div');
+    pcLabel.className = 'section-label' + (isToday ? ' today' : '');
+    pcLabel.innerHTML = `${labelText} <span class="count">${dayRecords.length}건</span>`;
+    pcBody.appendChild(pcLabel);
 
-    const group = document.createElement('div');
-    group.className = 'date-records';
+    const pcGroup = document.createElement('div');
+    pcGroup.className = 'date-records';
 
     if (!dayRecords.length) {
       const empty = document.createElement('div');
       empty.className = 'record-item empty';
       empty.textContent = '점검 기록 없음';
-      group.appendChild(empty);
+      pcGroup.appendChild(empty);
     } else {
       const groupId = 'home-' + key;
       dayRecords.forEach((r, idx) => {
@@ -778,7 +797,7 @@ function renderHistory(records, pending, offline) {
           item.classList.add('hidden-extra');
           item.dataset.group = groupId;
         }
-        group.appendChild(item);
+        pcGroup.appendChild(item);
       });
 
       if (dayRecords.length > HOME_GROUP_LIMIT) {
@@ -788,18 +807,49 @@ function renderHistory(records, pending, offline) {
         moreTile.dataset.group = groupId;
         moreTile.innerHTML = `<span class="more-label">더보기 (${extraCount}건 더)</span><span class="chev">⌄</span>`;
         moreTile.addEventListener('click', () => toggleHomeGroup(groupId, extraCount));
-        group.appendChild(moreTile);
+        pcGroup.appendChild(moreTile);
       }
     }
+    pcBody.appendChild(pcGroup);
 
-    wrap.appendChild(group);
+    /* ---- 모바일: 날짜별로 독립된 버튼(카드) — 누르면 그 아래로 전부 펼쳐짐 ---- */
+    const dateCard = document.createElement('div');
+    dateCard.className = 'date-card' + (dayRecords.length ? '' : ' empty');
+
+    if (!dayRecords.length) {
+      const row = document.createElement('div');
+      row.className = 'date-btn' + (isToday ? ' today' : '');
+      row.innerHTML = `<span>${labelText}</span><span class="count">0건</span>`;
+      dateCard.appendChild(row);
+    } else {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'date-btn' + (isToday ? ' today' : '');
+      btn.innerHTML = `<span>${labelText}</span><span class="date-row-right"><span class="count">${dayRecords.length}건</span><span class="chev">›</span></span>`;
+
+      const body = document.createElement('div');
+      body.className = 'date-body hidden';
+      dayRecords.forEach((r) => body.appendChild(buildRecordItem(r)));
+
+      btn.addEventListener('click', () => {
+        const opening = body.classList.contains('hidden');
+        body.classList.toggle('hidden', !opening);
+        dateCard.classList.toggle('open', opening);
+      });
+
+      dateCard.appendChild(btn);
+      dateCard.appendChild(body);
+    }
+    mobileBody.appendChild(dateCard);
   });
 
   if (!records.length && !pending.length) {
-    const p = document.createElement('p');
-    p.className = 'muted small';
-    p.textContent = '아직 점검 기록이 없습니다.';
-    wrap.appendChild(p);
+    [pcBody, mobileBody].forEach((wrap) => {
+      const p = document.createElement('p');
+      p.className = 'muted small';
+      p.textContent = '아직 점검 기록이 없습니다.';
+      wrap.appendChild(p);
+    });
   }
 
   if (pending.length) {

@@ -534,6 +534,72 @@ fieldset.field legend{
 }
 .record-item.hidden-extra{display:none;}
 
+/* 모바일 전용: "최근 점검 기록" — 상자 밖에 제목/새로고침, 그 아래 날짜별로
+   독립된 버튼(카드)들이 나열되고 누르면 그 아래로 기록이 펼쳐집니다.
+   기본(모바일 폭)에서는 이쪽을 보여주고, PC 폭(아래 미디어쿼리)에서는
+   .records-card(기존 그리드+더보기 방식)로 바꿔 보여줍니다. */
+.mobile-history{display:block;}
+.records-card{display:none;}
+
+.section-header-plain{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin:4px 4px 12px;
+}
+.section-header-plain h2{margin:0;}
+.section-header-plain .icon-btn{color:var(--primary);}
+
+.date-card{
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:14px;
+  margin-bottom:10px;
+  box-shadow:0 1px 2px rgba(16,24,40,0.05);
+  overflow:hidden;
+}
+.date-btn{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  width:100%;
+  background:none;
+  border:none;
+  text-align:left;
+  padding:15px 16px;
+  font-size:14.5px;
+  font-weight:700;
+  color:var(--text);
+  cursor:pointer;
+}
+.date-btn.today{color:var(--primary);}
+.date-card.empty{box-shadow:none;}
+.date-card.empty .date-btn{cursor:default;color:var(--muted);font-weight:500;}
+.date-row-right{display:flex;align-items:center;gap:8px;}
+.date-btn .count{
+  font-weight:600;
+  color:var(--muted);
+  font-size:11.5px;
+  background:#eef0f4;
+  border-radius:999px;
+  padding:2px 8px;
+}
+.date-btn.today .count{background:#e6eafc;color:var(--primary);}
+.date-card.empty .count{background:transparent;padding:0;}
+.date-btn .chev{color:var(--muted);font-size:16px;transition:transform 0.15s ease;}
+.date-card.open .chev{transform:rotate(90deg);}
+
+.date-body{
+  padding:0 14px 14px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  border-top:1px solid var(--border);
+  padding-top:10px;
+}
+.date-body.hidden{display:none;}
+.date-body .record-item{margin-bottom:0;}
+
 /* 하루 기록이 많을 때(3건 초과) 나타나는 더보기/접기 타일 */
 .more-tile{
   display:flex;
@@ -661,6 +727,10 @@ fieldset.field legend{
   .grid-spacer{grid-column:1;}
   .home-topline{grid-column:2;margin-bottom:14px;}
   .records-card{grid-column:1;}
+
+  /* PC 폭에서는 모바일 아코디언 대신 기존 그리드+더보기 카드를 보여줍니다. */
+  .mobile-history{display:none;}
+  .records-card{display:block;}
 
   /* 입력폼 화면들은 옆으로 너무 길어지지 않게 적당한 너비로 유지 */
   #screen-onboard .card,
