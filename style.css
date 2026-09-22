@@ -288,6 +288,10 @@ fieldset.field legend{
 .now-clock{font-size:20px;font-weight:700;color:var(--primary);font-variant-numeric:tabular-nums;}
 
 .scan-card h2{margin-bottom:4px;}
+.scan-card p.muted{
+  text-wrap: balance;
+  word-break: keep-all;
+}
 .scan-status{
   min-height:20px;
   font-size:13px;
