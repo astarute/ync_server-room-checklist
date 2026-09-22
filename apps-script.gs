@@ -17,7 +17,7 @@
  *    ALLOWED_EMAIL_DOMAIN 이 학교 이메일 도메인(ync.ac.kr)인지 확인하세요.
  */
 
-const SHEET_ID = '여기에_구글시트_ID를_붙여넣으세요';
+const SHEET_ID = '1WVAuienku00RmEecZR9ZAIRueXf6LF7dy3NPHoG4Bz8';
 const SHEET_NAME = 'Log';
 const PHOTO_FOLDER_NAME = '서버실점검_사진첨부';
 const SHARED_SECRET = ''; // 예: 'univ-server-room-2026' 처럼 바꾸면 보안이 강화됩니다.
@@ -93,16 +93,19 @@ function verifyGoogleIdToken_(idToken) {
     return { ok: false, error: 'domain_not_allowed' };
   }
 
+  const name = data.name || email.split('@')[0];
   return {
     ok: true,
     email: data.email,
-    name: data.name || email.split('@')[0],
-    position: getStaffPosition_(data.email),
+    name: name,
+    position: getStaffPosition_(data.email, name),
   };
 }
 
-// 직원명단 시트에서 이메일로 직책을 찾아 돌려줍니다. 못 찾으면 빈 문자열.
-function getStaffPosition_(email) {
+// 직원명단 시트에서 직책을 찾아 돌려줍니다. 못 찾으면 빈 문자열.
+// 1순위: 이메일이 적혀있는 행 중에서 이메일이 정확히 일치하는 사람 (가장 정확함)
+// 2순위: 이메일 칸이 비어있는 행 중에서 이름이 정확히 일치하는 사람 (이메일 아직 안 채운 경우 대비)
+function getStaffPosition_(email, name) {
   try {
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const sheet = ss.getSheetByName(STAFF_SHEET_NAME);
@@ -110,12 +113,27 @@ function getStaffPosition_(email) {
     const lastRow = sheet.getLastRow();
     if (lastRow < 2) return '';
     const values = sheet.getRange(2, 1, lastRow - 1, 3).getValues(); // 이메일, 이름, 직책
-    const target = String(email || '').toLowerCase();
+
+    const targetEmail = String(email || '').trim().toLowerCase();
+    const targetName = String(name || '').trim();
+
     for (let i = 0; i < values.length; i++) {
-      if (String(values[i][0] || '').toLowerCase() === target) {
+      const rowEmail = String(values[i][0] || '').trim().toLowerCase();
+      if (rowEmail && rowEmail === targetEmail) {
         return String(values[i][2] || '').trim();
       }
     }
+
+    if (targetName) {
+      for (let i = 0; i < values.length; i++) {
+        const rowEmail = String(values[i][0] || '').trim();
+        const rowName = String(values[i][1] || '').trim();
+        if (!rowEmail && rowName === targetName) {
+          return String(values[i][2] || '').trim();
+        }
+      }
+    }
+
     return '';
   } catch (err) {
     return '';

@@ -100,9 +100,18 @@ function init() {
 
   const user = getUser();
   if (!user.name || !user.email) {
+    // 로그인 전에는 메뉴/설정 버튼을 감추고(모바일), PC의 고정 사이드바도 감춰서
+    // (body.logged-out + CSS) 구글 로그인을 건너뛰고 다른 화면으로 갈 방법을 없앱니다.
+    // 모바일 드로어 자체의 열림/닫힘 상태(hidden 클래스)는 건드리지 않습니다 —
+    // 그건 openDrawer/closeDrawer가 따로 관리합니다.
+    document.body.classList.add('logged-out');
+    qs('menuBtn').classList.add('hidden');
+    closeDrawer();
     showScreen('screen-onboard');
     startGoogleSignIn();
   } else {
+    document.body.classList.remove('logged-out');
+    qs('menuBtn').classList.remove('hidden');
     showScreen('screen-home');
     qs('homeUserName').textContent = user.name + (user.team ? ` · ${user.team}` : '');
     startClock();
@@ -114,7 +123,10 @@ function init() {
 }
 
 function updateOnlineDot() {
+  // 상단바의 초록/빨강 점 표시는 뺐지만, 온라인/오프라인 판단 로직 자체는 다른 곳
+  // (기록 새로고침, 밀린 기록 재전송)에서 계속 쓰이니 이 함수는 남겨둡니다.
   const dot = qs('statusDot');
+  if (!dot) return;
   if (navigator.onLine) dot.classList.remove('offline');
   else dot.classList.add('offline');
 }
@@ -146,7 +158,6 @@ function registerServiceWorker() {
 
 function bindEvents() {
   qs('onboardSaveBtn').addEventListener('click', onOnboardSave);
-  qs('settingsBtn').addEventListener('click', openSettings);
   qs('setBackBtn').addEventListener('click', () => showScreen('screen-home'));
   qs('setSaveBtn').addEventListener('click', onSettingsSave);
   qs('setLogoutBtn').addEventListener('click', onLogout);
@@ -282,7 +293,7 @@ function startGoogleSignIn(retriesLeft) {
   }
   qs('gsiButtonContainer').innerHTML = '';
   google.accounts.id.renderButton(qs('gsiButtonContainer'), {
-    theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill', locale: 'ko', width: 280,
+    theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'pill', locale: 'ko', width: 280,
   });
 }
 

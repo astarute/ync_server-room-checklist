@@ -55,6 +55,13 @@ html,body{
   display:inline-block;
 }
 .dot.offline{background:#fca5a5;}
+.topbar-logo{
+  width:24px;
+  height:24px;
+  border-radius:6px;
+  object-fit:cover;
+  flex-shrink:0;
+}
 
 .icon-btn{
   background:transparent;
@@ -452,6 +459,11 @@ fieldset.field legend{
     flex-shrink:0;
     box-shadow:none;
     border-right:1px solid var(--border);
+  }
+  /* 로그인 전에는 PC의 고정 사이드바도 완전히 감춥니다. .drawer 쪽 !important보다
+     선택자 우선순위가 높아서 이 규칙이 이깁니다. */
+  body.logged-out .drawer{
+    display:none !important;
   }
 
   main{
