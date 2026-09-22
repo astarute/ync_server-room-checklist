@@ -56,10 +56,9 @@ html,body{
 }
 .dot.offline{background:#fca5a5;}
 .topbar-logo{
-  width:24px;
-  height:24px;
-  border-radius:6px;
-  object-fit:cover;
+  width:28px;
+  height:28px;
+  object-fit:contain;
   flex-shrink:0;
 }
 
