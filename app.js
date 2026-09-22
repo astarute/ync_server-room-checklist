@@ -9,6 +9,7 @@
 const LS = {
   name: 'src_user_name',
   team: 'src_user_team',
+  email: 'src_user_email',
   endpoint: 'src_endpoint',
   tags: 'src_tags',
   pending: 'src_pending',
@@ -19,6 +20,11 @@ const LS = {
 // 따로 입력하지 않아도 자동으로 이 주소를 씁니다. 비워두면(빈 문자열) 기존처럼
 // 각자 기기의 설정 화면에서 입력해야 합니다.
 const DEFAULT_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzpXMmpLUMaGom-CtWO7jvj-H9Cxx2B58MyDwZL3q_7ru4o7VprSueVd9F-vYq3eP6P/exec';
+
+// Google 로그인 설정: 학교 이메일(@ync.ac.kr) 계정만 로그인을 허용합니다.
+// Google Cloud Console에서 만든 OAuth 클라이언트(웹 애플리케이션)의 "클라이언트 ID"를
+// 아래에 붙여넣으세요. (예: 1234567890-abcxyz.apps.googleusercontent.com)
+const GOOGLE_CLIENT_ID = '904845440598-a9sul7p4reug9rcre031im6e0mjdunce.apps.googleusercontent.com';
 
 const qs = (id) => document.getElementById(id);
 
@@ -45,6 +51,7 @@ function getUser() {
   return {
     name: localStorage.getItem(LS.name) || '',
     team: localStorage.getItem(LS.team) || '',
+    email: localStorage.getItem(LS.email) || '',
   };
 }
 function getTags() {
@@ -77,6 +84,7 @@ function toast(msg) {
 /* ---------------- 초기화 ---------------- */
 
 let pendingChecklist = null; // 스캔 확인 후 checklist 화면에 넘길 정보
+let pendingGoogleUser = null; // Google 로그인 확인 후, 직책 입력 전까지 임시로 들고 있는 사용자 정보
 
 function init() {
   registerServiceWorker();
@@ -85,8 +93,9 @@ function init() {
   window.addEventListener('offline', updateOnlineDot);
 
   const user = getUser();
-  if (!user.name) {
+  if (!user.name || !user.email) {
     showScreen('screen-onboard');
+    startGoogleSignIn();
   } else {
     showScreen('screen-home');
     qs('homeUserName').textContent = user.name + (user.team ? ` · ${user.team}` : '');
@@ -123,6 +132,7 @@ function bindEvents() {
   qs('settingsBtn').addEventListener('click', openSettings);
   qs('setBackBtn').addEventListener('click', () => showScreen('screen-home'));
   qs('setSaveBtn').addEventListener('click', onSettingsSave);
+  qs('setLogoutBtn').addEventListener('click', onLogout);
   qs('clearTagsBtn').addEventListener('click', () => {
     if (confirm('등록된 NFC 태그를 모두 초기화할까요? 다음 스캔 시 다시 등록해야 합니다.')) {
       saveTags([]);
@@ -134,6 +144,7 @@ function bindEvents() {
   qs('drawerOverlay').addEventListener('click', closeDrawer);
   qs('drawerHome').addEventListener('click', () => { closeDrawer(); showScreen('screen-home'); loadHistory(); });
   qs('drawerServerRoom').addEventListener('click', () => { closeDrawer(); showScreen('screen-server'); });
+  qs('drawerEquipRoom').addEventListener('click', () => { closeDrawer(); showScreen('screen-equipment'); });
   qs('drawerSettings').addEventListener('click', () => { closeDrawer(); openSettings(); });
   qs('drawerRoomsToggle').addEventListener('click', toggleRoomsSubmenu);
   document.querySelectorAll('.drawer-subitem').forEach((btn) => {
@@ -143,8 +154,10 @@ function bindEvents() {
       openRoomChecklist(room);
     });
   });
-  qs('scanBtn').addEventListener('click', startNfcScan);
-  qs('manualBtn').addEventListener('click', startManualCheckIn);
+  qs('scanBtn').addEventListener('click', () => startNfcScan('server'));
+  qs('manualBtn').addEventListener('click', () => startManualCheckIn('server'));
+  qs('scanBtn2').addEventListener('click', () => startNfcScan('equipment'));
+  qs('manualBtn2').addEventListener('click', () => startManualCheckIn('equipment'));
   qs('refreshBtn').addEventListener('click', loadHistory);
   qs('cancelBtn').addEventListener('click', () => showScreen('screen-home'));
   qs('doneHomeBtn').addEventListener('click', () => { showScreen('screen-home'); loadHistory(); });
@@ -153,11 +166,105 @@ function bindEvents() {
 }
 
 function onOnboardSave() {
-  const name = qs('onboardName').value.trim();
-  if (!name) { toast('이름을 입력해주세요.'); return; }
-  localStorage.setItem(LS.name, name);
+  if (!pendingGoogleUser) {
+    toast('로그인 정보가 없습니다. 처음부터 다시 진행해주세요.');
+    showScreen('screen-onboard');
+    startGoogleSignIn();
+    return;
+  }
+  localStorage.setItem(LS.name, pendingGoogleUser.name);
+  localStorage.setItem(LS.email, pendingGoogleUser.email);
   localStorage.setItem(LS.team, qs('onboardTeam').value.trim());
+  pendingGoogleUser = null;
   init();
+}
+
+function onLogout() {
+  if (!confirm('로그아웃하고 다른 Google 계정으로 로그인하시겠습니까?\n이 기기에 저장된 이름/직책 정보가 지워집니다.')) return;
+  localStorage.removeItem(LS.name);
+  localStorage.removeItem(LS.email);
+  localStorage.removeItem(LS.team);
+  if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+    try { google.accounts.id.disableAutoSelect(); } catch (e) { /* ignore */ }
+  }
+  init();
+}
+
+/* ---------------- Google 로그인 ----------------
+ * Google Identity Services(GSI) 버튼을 렌더링하고, 로그인 성공 시 받은 ID 토큰을
+ * Apps Script 백엔드로 보내 "학교 이메일(@ync.ac.kr)이 맞는지" 검증합니다.
+ * 검증은 반드시 서버(Apps Script)에서 하며, 브라우저에서 받은 값만 믿지 않습니다.
+ */
+
+function startGoogleSignIn(retriesLeft) {
+  if (retriesLeft === undefined) retriesLeft = 20; // 최대 약 4초 대기
+
+  qs('onboardStep1').classList.remove('hidden');
+  qs('onboardStep2').classList.add('hidden');
+
+  if (typeof google === 'undefined' || !google.accounts || !google.accounts.id) {
+    if (retriesLeft <= 0) {
+      qs('onboardLoginStatus').className = 'scan-status error';
+      qs('onboardLoginStatus').textContent = 'Google 로그인 스크립트를 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침해주세요.';
+      return;
+    }
+    setTimeout(() => startGoogleSignIn(retriesLeft - 1), 200);
+    return;
+  }
+
+  qs('onboardLoginStatus').className = 'scan-status';
+  qs('onboardLoginStatus').textContent = '';
+
+  if (!window.__gsiInited) {
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCredential,
+    });
+    window.__gsiInited = true;
+  }
+  qs('gsiButtonContainer').innerHTML = '';
+  google.accounts.id.renderButton(qs('gsiButtonContainer'), {
+    theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill', locale: 'ko', width: 280,
+  });
+}
+
+async function handleGoogleCredential(response) {
+  const statusEl = qs('onboardLoginStatus');
+  statusEl.className = 'scan-status';
+  statusEl.textContent = '로그인 확인 중...';
+
+  const endpoint = getEndpoint();
+  if (!endpoint) {
+    statusEl.className = 'scan-status error';
+    statusEl.textContent = '서버 주소가 설정되지 않아 로그인을 확인할 수 없습니다.';
+    return;
+  }
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'login', idToken: response.credential }),
+    });
+    const data = await res.json();
+
+    if (!data.ok) {
+      statusEl.className = 'scan-status error';
+      statusEl.textContent = data.error === 'domain_not_allowed'
+        ? '학교 이메일(@ync.ac.kr) 계정으로만 로그인할 수 있습니다. 다른 계정으로 다시 시도해주세요.'
+        : '로그인 확인에 실패했습니다. 다시 시도해주세요.';
+      return;
+    }
+
+    pendingGoogleUser = { name: data.name, email: data.email };
+    qs('onboardConfirmedName').textContent = data.name;
+    qs('onboardConfirmedEmail').textContent = data.email;
+    qs('onboardStep1').classList.add('hidden');
+    qs('onboardStep2').classList.remove('hidden');
+  } catch (err) {
+    statusEl.className = 'scan-status error';
+    statusEl.textContent = '네트워크 오류로 로그인 확인에 실패했습니다. 다시 시도해주세요.';
+  }
 }
 
 function openDrawer() {
@@ -182,6 +289,7 @@ function openRoomChecklist(roomLabel) {
 function openSettings() {
   const user = getUser();
   qs('setName').value = user.name;
+  qs('setEmail').value = user.email;
   qs('setTeam').value = user.team;
   renderTagList();
   showScreen('screen-settings');
@@ -211,20 +319,28 @@ function renderTagList() {
 }
 
 function onSettingsSave() {
-  const name = qs('setName').value.trim();
-  if (!name) { toast('이름을 입력해주세요.'); return; }
-  localStorage.setItem(LS.name, name);
-  localStorage.setItem(LS.team, qs('setTeam').value.trim());
-  qs('homeUserName').textContent = name + (qs('setTeam').value.trim() ? ` · ${qs('setTeam').value.trim()}` : '');
+  const team = qs('setTeam').value.trim();
+  localStorage.setItem(LS.team, team);
+  const user = getUser();
+  qs('homeUserName').textContent = user.name + (team ? ` · ${team}` : '');
   toast('저장되었습니다.');
   showScreen('screen-home');
   loadHistory();
 }
 
-/* ---------------- NFC 스캔 ---------------- */
+/* ---------------- NFC 스캔 ----------------
+ * 서버실/장비실처럼 NFC로 확인하는 화면이 여러 개일 수 있어서, 화면별로 다른
+ * scanStatus/버튼 id를 쓰더라도 이 함수들을 그대로 재사용할 수 있게 구성했습니다.
+ */
 
-async function startNfcScan() {
-  const statusEl = qs('scanStatus');
+const NFC_SCREENS = {
+  server: { statusId: 'scanStatus', defaultLabel: '서버실' },
+  equipment: { statusId: 'scanStatus2', defaultLabel: '장비실' },
+};
+
+async function startNfcScan(screenKey) {
+  const cfg = NFC_SCREENS[screenKey];
+  const statusEl = qs(cfg.statusId);
   statusEl.className = 'scan-status';
   statusEl.textContent = '';
 
@@ -242,7 +358,7 @@ async function startNfcScan() {
     const onReading = (event) => {
       ndef.removeEventListener('reading', onReading);
       const serial = event.serialNumber || 'unknown-tag';
-      handleTagRead(serial);
+      handleTagRead(serial, screenKey);
     };
     ndef.addEventListener('reading', onReading, { once: true });
 
@@ -260,19 +376,20 @@ async function startNfcScan() {
   }
 }
 
-function handleTagRead(serial) {
-  const statusEl = qs('scanStatus');
+function handleTagRead(serial, screenKey) {
+  const cfg = NFC_SCREENS[screenKey];
+  const statusEl = qs(cfg.statusId);
   const tags = getTags();
   let tag = tags.find((t) => t.id === serial);
 
   if (!tag) {
-    const label = prompt('처음 인식된 태그입니다. 이 위치의 이름을 입력해주세요 (예: 본관 서버실 입구)', '서버실');
+    const label = prompt('처음 인식된 태그입니다. 이 위치의 이름을 입력해주세요 (예: 본관 서버실 입구)', cfg.defaultLabel);
     if (label === null) {
       statusEl.className = 'scan-status';
       statusEl.textContent = '등록이 취소되었습니다.';
       return;
     }
-    tag = { id: serial, label: label.trim() || '서버실', createdAt: Date.now() };
+    tag = { id: serial, label: label.trim() || cfg.defaultLabel, createdAt: Date.now() };
     tags.push(tag);
     saveTags(tags);
     toast('새 태그가 등록되었습니다: ' + tag.label);
@@ -284,11 +401,12 @@ function handleTagRead(serial) {
   openChecklist({ tagId: tag.id, tagLabel: tag.label, method: 'nfc' });
 }
 
-function startManualCheckIn() {
+function startManualCheckIn(screenKey) {
   if (!confirm('NFC 없이 수동으로 확인하시겠습니까?\n이 방법은 실제 위치 증빙이 약해집니다. 가능하면 NFC 스캔을 이용해주세요.')) {
     return;
   }
-  openChecklist({ tagId: 'manual', tagLabel: '수동 확인 (NFC 미사용)', method: 'manual' });
+  const cfg = NFC_SCREENS[screenKey];
+  openChecklist({ tagId: 'manual', tagLabel: (cfg ? cfg.defaultLabel + ' ' : '') + '수동 확인 (NFC 미사용)', method: 'manual' });
 }
 
 function openChecklist(scanInfo) {
@@ -298,18 +416,15 @@ function openChecklist(scanInfo) {
     ...scanInfo,
     userName: user.name,
     userTeam: user.team,
+    userEmail: user.email,
     timestamp: now.toISOString(),
   };
-
-  qs('ckUser').textContent = user.name + (user.team ? ` (${user.team})` : '');
-  qs('ckTime').textContent = formatDateTime(now);
-  qs('ckTag').textContent = scanInfo.tagLabel;
 
   qs('checklistForm').reset();
   qs('photoPreview').classList.add('hidden');
   qs('submitStatus').textContent = '';
   // re-check equipment boxes to default true after reset
-  ['eqUps', 'eqAircon', 'eqFire', 'eqNoise', 'eqDoor'].forEach((id) => { qs(id).checked = true; });
+  ['eqAircon', 'eqNoise'].forEach((id) => { qs(id).checked = true; });
 
   // 선택적으로 GPS 좌표도 같이 시도(실패해도 무시)
   if (navigator.geolocation) {
@@ -377,13 +492,9 @@ async function onSubmitChecklist(e) {
   const record = {
     ...pendingChecklist,
     temperature: parseFloat(temp),
-    humidity: qs('fHumidity').value === '' ? null : parseFloat(qs('fHumidity').value),
     equipment: {
-      ups: qs('eqUps').checked,
       aircon: qs('eqAircon').checked,
-      fire: qs('eqFire').checked,
       noiseOk: qs('eqNoise').checked,
-      door: qs('eqDoor').checked,
     },
     note: qs('fNote').value.trim(),
     photoBase64,

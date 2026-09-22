@@ -14,6 +14,8 @@
 
 *{box-sizing:border-box;}
 
+.hidden{display:none !important;}
+
 html,body{
   margin:0;
   padding:0;
@@ -205,6 +207,18 @@ input[type=file]{
 }
 textarea{resize:vertical;}
 
+input:disabled{
+  color:var(--muted);
+  background:#f1f5f9;
+}
+
+.gsi-btn-wrap{
+  display:flex;
+  justify-content:center;
+  margin:18px 0 8px;
+  min-height:44px;
+}
+
 fieldset.field{
   border:1px solid var(--border);
   border-radius:10px;
@@ -394,6 +408,7 @@ fieldset.field legend{
   /* 입력폼 화면들은 옆으로 너무 길어지지 않게 적당한 너비로 유지 */
   #screen-onboard .card,
   #screen-server .card,
+  #screen-equipment .card,
   #screen-checklist .card,
   #screen-settings .card,
   #screen-done .card{

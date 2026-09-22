@@ -8,6 +8,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="style.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -27,10 +28,10 @@
     영남이공대학교
     <div class="drawer-sub">서버실 점검</div>
   </div>
-  <button type="button" class="drawer-item" id="drawerHome">🏠 홈</button>
+  <button type="button" class="drawer-item" id="drawerHome">홈</button>
 
   <button type="button" class="drawer-item drawer-parent" id="drawerRoomsToggle">
-    <span>🏫 강의실</span>
+    <span>강의실</span>
     <span class="drawer-caret" id="roomsCaret">▾</span>
   </button>
   <div id="roomsSubmenu" class="drawer-submenu hidden">
@@ -42,21 +43,25 @@
     <button type="button" class="drawer-subitem" data-room="정보보안실습실">정보보안실습실</button>
   </div>
 
-  <button type="button" class="drawer-item" id="drawerServerRoom">🖥️ 서버실</button>
-  <button type="button" class="drawer-item" id="drawerSettings">⚙️ 설정</button>
+  <button type="button" class="drawer-item" id="drawerServerRoom">서버실</button>
+  <button type="button" class="drawer-item" id="drawerEquipRoom">장비실</button>
+  <button type="button" class="drawer-item" id="drawerSettings">설정</button>
 </nav>
 
 <main id="app">
 
-  <!-- 화면 1: 최초 이름 등록 -->
+  <!-- 화면 1: 최초 로그인/등록 -->
   <section id="screen-onboard" class="screen hidden">
-    <div class="card">
+    <div class="card" id="onboardStep1">
       <h1>처음 오셨네요</h1>
-      <p class="muted">이 기기에서 점검할 때 표시될 이름을 등록해주세요. 이후엔 자동으로 기억됩니다.</p>
-      <label class="field">
-        <span>이름</span>
-        <input type="text" id="onboardName" placeholder="예: 김철수" autocomplete="name">
-      </label>
+      <p class="muted">학교 구글 계정(@ync.ac.kr)으로 로그인해주세요. 이 기기에서는 이후 자동으로 기억됩니다.</p>
+      <div id="gsiButtonContainer" class="gsi-btn-wrap"></div>
+      <p id="onboardLoginStatus" class="scan-status"></p>
+    </div>
+
+    <div class="card hidden" id="onboardStep2">
+      <h1>거의 다 됐어요</h1>
+      <p class="muted">로그인 확인됨: <strong id="onboardConfirmedName">-</strong> (<span id="onboardConfirmedEmail">-</span>)</p>
       <label class="field">
         <span>직책(선택)</span>
         <input type="text" id="onboardTeam" placeholder="예: 팀장, 근로학생">
@@ -99,28 +104,21 @@
     </div>
   </section>
 
+  <!-- 화면 2-2: 장비실 (NFC 스캔 전용, 서버실과 동일 구성) -->
+  <section id="screen-equipment" class="screen hidden">
+    <div class="card scan-card">
+      <h2>장비실 도착 확인</h2>
+      <p class="muted">장비실 입구의 NFC 태그에 휴대폰을 가까이 대주세요. 태그를 인식하면 자동으로 시간과 이름이 기록됩니다.</p>
+      <button id="scanBtn2" class="btn btn-primary btn-block btn-large">
+        <span class="btn-icon">📶</span> NFC 태그 스캔 시작
+      </button>
+      <button id="manualBtn2" class="btn btn-ghost btn-block">NFC를 쓸 수 없나요? 수동으로 확인</button>
+      <p id="scanStatus2" class="scan-status"></p>
+    </div>
+  </section>
+
   <!-- 화면 3: 체크리스트 입력 -->
   <section id="screen-checklist" class="screen hidden">
-    <div class="card confirm-card">
-      <div class="confirm-row">
-        <span class="badge badge-ok">✔ 위치 확인됨</span>
-      </div>
-      <div class="confirm-grid">
-        <div>
-          <div class="muted small">점검자</div>
-          <div id="ckUser">-</div>
-        </div>
-        <div>
-          <div class="muted small">일시</div>
-          <div id="ckTime">-</div>
-        </div>
-        <div>
-          <div class="muted small">태그 위치</div>
-          <div id="ckTag">-</div>
-        </div>
-      </div>
-    </div>
-
     <form id="checklistForm" class="card">
       <h2>점검 항목</h2>
 
@@ -129,32 +127,15 @@
         <input type="number" step="0.1" id="fTemp" inputmode="decimal" placeholder="예: 22.5" required>
       </label>
 
-      <label class="field">
-        <span>습도 (%) <span class="opt">선택</span></span>
-        <input type="number" step="0.1" id="fHumidity" inputmode="decimal" placeholder="예: 45">
-      </label>
-
       <fieldset class="field">
         <legend>장비 상태 점검</legend>
-        <label class="checkbox-row">
-          <input type="checkbox" id="eqUps" checked>
-          <span>UPS(무정전 전원장치) 정상</span>
-        </label>
         <label class="checkbox-row">
           <input type="checkbox" id="eqAircon" checked>
           <span>항온항습기/에어컨 정상 가동</span>
         </label>
         <label class="checkbox-row">
-          <input type="checkbox" id="eqFire" checked>
-          <span>소화 설비 정상</span>
-        </label>
-        <label class="checkbox-row">
           <input type="checkbox" id="eqNoise" checked>
           <span>이상 소음/냄새 없음</span>
-        </label>
-        <label class="checkbox-row">
-          <input type="checkbox" id="eqDoor" checked>
-          <span>출입문/잠금장치 정상</span>
         </label>
       </fieldset>
 
@@ -190,8 +171,12 @@
     <div class="card">
       <h1>설정</h1>
       <label class="field">
-        <span>이름</span>
-        <input type="text" id="setName">
+        <span>이름 (Google 계정)</span>
+        <input type="text" id="setName" disabled>
+      </label>
+      <label class="field">
+        <span>이메일</span>
+        <input type="text" id="setEmail" disabled>
       </label>
       <label class="field">
         <span>직책</span>
@@ -203,6 +188,7 @@
         <button type="button" id="clearTagsBtn" class="btn btn-ghost">등록된 태그 초기화</button>
       </label>
       <button id="setSaveBtn" class="btn btn-primary btn-block">저장</button>
+      <button id="setLogoutBtn" class="btn btn-ghost btn-block">로그아웃 (다른 계정으로 전환)</button>
       <button id="setBackBtn" class="btn btn-ghost btn-block">뒤로</button>
     </div>
   </section>

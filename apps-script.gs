@@ -13,6 +13,8 @@
  *    - 액세스 권한: 전체(Anyone) 또는 조직 내 전체(Google Workspace 도메인 보유 시 권장)
  *    - 배포 후 나오는 웹앱 URL을 복사해서 PWA 설정 화면의 "서버 저장 주소"에 붙여넣습니다.
  * 5. 코드를 수정할 때마다 배포 > 배포 관리 > 수정(연필 아이콘) > 새 버전으로 배포해야 반영됩니다.
+ * 6. (Google 로그인용) 아래 GOOGLE_CLIENT_ID 를 app.js와 동일한 값으로 채워 넣고,
+ *    ALLOWED_EMAIL_DOMAIN 이 학교 이메일 도메인(ync.ac.kr)인지 확인하세요.
  */
 
 const SHEET_ID = '여기에_구글시트_ID를_붙여넣으세요';
@@ -20,11 +22,17 @@ const SHEET_NAME = 'Log';
 const PHOTO_FOLDER_NAME = '서버실점검_사진첨부';
 const SHARED_SECRET = ''; // 예: 'univ-server-room-2026' 처럼 바꾸면 보안이 강화됩니다.
 
+// Google 로그인: 이 도메인으로 끝나는 이메일만 로그인을 허용합니다.
+const ALLOWED_EMAIL_DOMAIN = 'ync.ac.kr';
+// app.js의 GOOGLE_CLIENT_ID와 반드시 동일한 값을 붙여넣으세요.
+// (비워두면 발급 대상(aud) 검증을 건너뛰므로, 반드시 채워 넣는 것을 권장합니다.)
+const GOOGLE_CLIENT_ID = '904845440598-a9sul7p4reug9rcre031im6e0mjdunce.apps.googleusercontent.com';
+
 const HEADERS = [
   '제출시각', '점검시각', '이름', '소속', '태그ID', '위치', '확인방법',
   '위도', '경도', '온도(C)', '습도(%)',
   'UPS정상', '항온항습기정상', '소화설비정상', '소음없음', '출입문정상',
-  '메모', '사진링크', 'ClientID',
+  '메모', '사진링크', 'ClientID', '이메일',
 ];
 
 function getSheet_() {
@@ -43,6 +51,37 @@ function getSheet_() {
 function checkAuth_(payload) {
   if (!SHARED_SECRET) return true;
   return payload && payload.secret === SHARED_SECRET;
+}
+
+// Google이 발급한 ID 토큰(idToken)을 구글 서버에 직접 물어봐서 진짜인지, 학교 이메일이
+// 맞는지 확인합니다. 여기서 통과된 이메일/이름만 신뢰할 수 있는 값으로 취급합니다.
+function verifyGoogleIdToken_(idToken) {
+  if (!idToken) return { ok: false, error: 'missing_token' };
+
+  let data;
+  try {
+    const res = UrlFetchApp.fetch(
+      'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken),
+      { muteHttpExceptions: true }
+    );
+    if (res.getResponseCode() !== 200) return { ok: false, error: 'invalid_token' };
+    data = JSON.parse(res.getContentText());
+  } catch (err) {
+    return { ok: false, error: 'verify_failed' };
+  }
+
+  if (GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('여기에') && data.aud !== GOOGLE_CLIENT_ID) {
+    return { ok: false, error: 'aud_mismatch' };
+  }
+  if (data.email_verified !== 'true' && data.email_verified !== true) {
+    return { ok: false, error: 'email_not_verified' };
+  }
+  const email = String(data.email || '').toLowerCase();
+  if (!email.endsWith('@' + ALLOWED_EMAIL_DOMAIN.toLowerCase())) {
+    return { ok: false, error: 'domain_not_allowed' };
+  }
+
+  return { ok: true, email: data.email, name: data.name || email.split('@')[0] };
 }
 
 function jsonOut_(obj) {
@@ -73,6 +112,10 @@ function savePhoto_(base64DataUrl, fileNameHint) {
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
+
+    if (body.action === 'login') {
+      return jsonOut_(verifyGoogleIdToken_(body.idToken));
+    }
 
     if (body.action !== 'submit' || !body.record) {
       return jsonOut_({ ok: false, error: 'invalid_action' });
@@ -105,6 +148,7 @@ function doPost(e) {
       r.note || '',
       photoUrl,
       r.clientId || '',
+      r.userEmail || '',
     ]);
 
     return jsonOut_({ ok: true });
@@ -153,6 +197,7 @@ function doGet(e) {
       note: row[16],
       photoUrl: row[17],
       clientId: row[18],
+      userEmail: row[19],
     })).reverse(); // 최신순
 
     return jsonOut_({ ok: true, records });
