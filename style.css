@@ -351,6 +351,50 @@ fieldset.field legend{
 .user-name{font-size:18px;font-weight:700;}
 .now-clock{font-size:20px;font-weight:700;color:var(--primary);font-variant-numeric:tabular-nums;}
 
+/* 홈 화면: 로그인 정보를 작은 알약 모양으로 오른쪽에, 그 왼쪽 끝에 맞춰서
+   최근 점검 기록 카드를 배치합니다. 모바일에서는 그냥 위아래로 쌓입니다
+   (PC 전용 그리드 배치는 아래 미디어쿼리에서). */
+.home-topline{
+  display:flex;
+  justify-content:flex-end;
+  margin-bottom:14px;
+}
+.mini-user-card{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding:8px 16px 8px 8px;
+  box-shadow:0 1px 2px rgba(16,24,40,0.06);
+  white-space:nowrap;
+}
+.mini-user-avatar{
+  width:30px;
+  height:30px;
+  border-radius:50%;
+  background:var(--primary);
+  color:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:13px;
+  font-weight:700;
+  flex-shrink:0;
+}
+.mini-user-name{font-size:13.5px;font-weight:700;color:var(--text);line-height:1.2;}
+.mini-user-sub{font-size:11px;color:var(--muted);line-height:1.2;}
+.mini-user-clock{
+  font-size:13px;
+  font-weight:700;
+  color:var(--primary);
+  font-variant-numeric:tabular-nums;
+  border-left:1px solid var(--border);
+  padding-left:10px;
+  margin-left:2px;
+}
+
 .scan-card h2{margin-bottom:4px;}
 .scan-status{
   min-height:20px;
@@ -445,6 +489,27 @@ fieldset.field legend{
   color:var(--muted);
   font-weight:700;
   margin:14px 4px 8px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.section-label .count{
+  font-weight:600;
+  color:var(--muted);
+  font-size:11px;
+  background:#eef0f4;
+  border-radius:999px;
+  padding:2px 8px;
+}
+.section-label.today{color:var(--primary);}
+.section-label.today .count{background:#e6eafc;color:var(--primary);}
+
+/* 홈 화면의 날짜별 기록 묶음: 세로로 쌓지 않고 가로로 나란히 배치 */
+.date-records{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(230px, 1fr));
+  gap:10px;
+  margin-bottom:4px;
 }
 
 .record-item{
@@ -457,6 +522,41 @@ fieldset.field legend{
 .record-item.anomaly{
   border-color:#fecaca;
   background:#fffaf9;
+}
+.date-records .record-item{margin-bottom:0;}
+.record-item.empty{
+  grid-column:1 / -1;
+  border-style:dashed;
+  color:var(--muted);
+  text-align:center;
+  padding:14px;
+  font-size:12.5px;
+}
+.record-item.hidden-extra{display:none;}
+
+/* 하루 기록이 많을 때(3건 초과) 나타나는 더보기/접기 타일 */
+.more-tile{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  border:1px dashed var(--primary);
+  border-radius:12px;
+  background:#f6f7fd;
+  color:var(--primary);
+  font-size:13px;
+  font-weight:700;
+  cursor:pointer;
+  padding:12px 14px;
+}
+.more-tile:hover{background:#eef1fb;}
+.more-tile .chev{font-size:15px;transition:transform 0.15s ease;}
+.more-tile.expanded .chev{transform:rotate(180deg);}
+/* 펼치면 나머지 기록들 뒤, 그 줄의 맨 끝(오른쪽)으로 이동합니다 */
+.more-tile.expanded{
+  order:999;
+  grid-column:-2 / -1;
 }
 .record-top{
   display:flex;
@@ -522,12 +622,24 @@ fieldset.field legend{
   body.logged-out .drawer{
     display:none !important;
   }
+  /* 로그인 전에는 사이드바가 없어서 main이 flex:1로 화면 왼쪽에 붙어버립니다.
+     margin을 auto로 주면 (flex 아이템의 auto 마진 특성으로) 남는 공간을 좌우
+     똑같이 나눠 가져서 화면 정가운데에 오게 됩니다. */
+  body.logged-out main{
+    margin:0 auto;
+  }
 
   main{
     flex:1;
     max-width:1040px;
     margin:0;
     padding:28px 36px 56px;
+  }
+  /* 홈 화면에서는 "현재 로그인" 박스를 화면 진짜 오른쪽 끝까지 붙이기 위해
+     본문 폭 제한(1040px)을 풀어줍니다. (showScreen()이 body[data-screen]을 갱신)
+     다른 화면들은 각자 카드에 이미 max-width가 있어서 영향 없습니다. */
+  body[data-screen="screen-home"] main{
+    max-width:none;
   }
 
   /* 최근 점검 기록: 세로 한 줄 목록 대신 여러 개를 격자로 나란히 */
@@ -536,6 +648,19 @@ fieldset.field legend{
     grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
     gap:10px;
   }
+
+  /* 홈 화면 상단: "현재 로그인" 박스는 오른쪽 칸(내용 크기만큼만),
+     "최근 점검 기록" 카드는 왼쪽 칸(남는 공간 전부) — 그 결과 기록 카드의
+     오른쪽 끝이 로그인 박스의 왼쪽 끝과 정확히 맞춰집니다. */
+  .home-grid{
+    display:grid;
+    grid-template-columns:1fr auto;
+    column-gap:16px;
+    align-items:start;
+  }
+  .grid-spacer{grid-column:1;}
+  .home-topline{grid-column:2;margin-bottom:14px;}
+  .records-card{grid-column:1;}
 
   /* 입력폼 화면들은 옆으로 너무 길어지지 않게 적당한 너비로 유지 */
   #screen-onboard .card,

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1e2a6b">
-<title>서버실 점검</title>
+<title>Cyber Security</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="style.css">
@@ -16,7 +16,7 @@
   <button id="menuBtn" class="icon-btn" aria-label="메뉴">☰</button>
   <div class="topbar-title">
     <img src="icons/logo-shield.png" alt="" class="topbar-logo">
-    사이버보안
+    Cyber Security
   </div>
 </header>
 
@@ -25,7 +25,6 @@
 <nav id="drawer" class="drawer hidden" aria-label="메뉴">
   <div class="drawer-header">
     영남이공대학교
-    <div class="drawer-sub">서버실 점검</div>
   </div>
   <button type="button" class="drawer-item" id="drawerHome">홈</button>
 
@@ -58,7 +57,7 @@
       <form id="adminLoginForm" class="admin-login-form">
         <div class="login-field">
           <input type="text" id="adminId" placeholder=" " autocomplete="username">
-          <label for="adminId">ID</label>
+          <label for="adminId">아이디</label>
         </div>
         <div class="login-field">
           <input type="password" id="adminPw" placeholder=" " autocomplete="current-password">
@@ -97,27 +96,33 @@
 
   <!-- 화면 2: 메인 -->
   <section id="screen-home" class="screen hidden">
-    <div class="card user-card">
-      <div>
-        <div class="muted small">현재 로그인</div>
-        <div class="user-name" id="homeUserName">-</div>
+    <div class="home-grid">
+      <div class="grid-spacer"></div>
+      <div class="home-topline">
+        <div class="mini-user-card">
+          <div class="mini-user-avatar" id="homeUserAvatar">-</div>
+          <div>
+            <div class="mini-user-name" id="homeUserName">-</div>
+            <div class="mini-user-sub">현재 로그인</div>
+          </div>
+          <div class="mini-user-clock" id="nowClock">--:--</div>
+        </div>
       </div>
-      <div class="now-clock" id="nowClock">--:--</div>
-    </div>
 
-    <div class="card">
-      <div class="section-header">
-        <h2>최근 점검 기록</h2>
-        <button id="refreshBtn" class="icon-btn" aria-label="새로고침">
-          <svg id="refreshIcon" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 12a8 8 0 0 1 14.5-4.6M20 12a8 8 0 0 1-14.5 4.6"/>
-            <polyline points="18.5 3 18.5 8 13.5 8"/>
-            <polyline points="5.5 21 5.5 16 10.5 16"/>
-          </svg>
-        </button>
-      </div>
-      <div id="historyList" class="history-list">
-        <p class="muted small">기록을 불러오는 중...</p>
+      <div class="card records-card">
+        <div class="section-header">
+          <h2>최근 점검 기록</h2>
+          <button id="refreshBtn" class="icon-btn" aria-label="새로고침">
+            <svg id="refreshIcon" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 12a8 8 0 0 1 14.5-4.6M20 12a8 8 0 0 1-14.5 4.6"/>
+              <polyline points="18.5 3 18.5 8 13.5 8"/>
+              <polyline points="5.5 21 5.5 16 10.5 16"/>
+            </svg>
+          </button>
+        </div>
+        <div id="historyList">
+          <p class="muted small">기록을 불러오는 중...</p>
+        </div>
       </div>
     </div>
   </section>

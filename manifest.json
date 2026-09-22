@@ -1,6 +1,6 @@
 {
-  "name": "서버실 점검 체크리스트",
-  "short_name": "서버실점검",
+  "name": "Cyber Security",
+  "short_name": "Cyber Security",
   "description": "NFC 태그로 서버실 방문을 확인하고 온도/장비 상태를 기록하는 내부용 체크리스트 앱",
   "start_url": "./index.html",
   "scope": "./",

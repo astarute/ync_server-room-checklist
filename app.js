@@ -71,6 +71,9 @@ function formatDateTime(d) {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach((el) => el.classList.add('hidden'));
   qs(id).classList.remove('hidden');
+  // 어떤 화면이 켜져있는지 body에 표시해둡니다. 홈 화면에서만 PC 레이아웃이
+  // 본문 폭 제한을 풀어야 해서(로그인 박스를 화면 오른쪽 끝까지 붙이기 위해) CSS가 이 값을 봅니다.
+  document.body.dataset.screen = id;
 }
 
 let toastTimer = null;
@@ -113,6 +116,7 @@ function init() {
     document.body.classList.remove('logged-out');
     qs('menuBtn').classList.remove('hidden');
     showScreen('screen-home');
+    qs('homeUserAvatar').textContent = (user.name || '?').charAt(0);
     qs('homeUserName').textContent = user.name + (user.team ? ` · ${user.team}` : '');
     startClock();
     loadHistory();
@@ -691,7 +695,8 @@ async function loadHistory() {
   }
 
   try {
-    const res = await fetch(endpoint + (endpoint.includes('?') ? '&' : '?') + 'action=list&limit=15');
+    // 날짜별로 묶어서 보여주다 보니 하루당 기록이 있는지 판단하려면 예전보다 더 넉넉히 받아둡니다.
+    const res = await fetch(endpoint + (endpoint.includes('?') ? '&' : '?') + 'action=list&limit=40');
     const data = await res.json();
     const records = (data && data.records) || [];
     saveJSON(LS.historyCache, records);
@@ -708,6 +713,31 @@ function renderPendingBadge(pending) {
   }
 }
 
+// 홈 화면 "최근 점검 기록" 미리보기 설정: 오늘 + 주말을 뺀 평일 며칠치를 보여줄지,
+// 하루에 몇 건까지는 그냥 다 보여주고 그 이상이면 "더보기"로 접어둘지.
+const HOME_PREVIEW_DAYS = 5;
+const HOME_GROUP_LIMIT = 3;
+
+// 오늘(요일 상관없이 항상 포함) + 주말을 건너뛴 과거 평일들을, 최신순으로 count개 돌려줍니다.
+function homePreviewDates(count) {
+  const days = [];
+  const today = new Date();
+  days.push(new Date(today));
+  const cursor = new Date(today);
+  while (days.length < count) {
+    cursor.setDate(cursor.getDate() - 1);
+    const dow = cursor.getDay(); // 0=일, 6=토
+    if (dow !== 0 && dow !== 6) {
+      days.push(new Date(cursor));
+    }
+  }
+  return days;
+}
+
+function dateKeyOf(d) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function renderHistory(records, pending, offline) {
   const wrap = qs('historyList');
   wrap.innerHTML = '';
@@ -719,29 +749,74 @@ function renderHistory(records, pending, offline) {
     wrap.appendChild(p);
   }
 
-  if (!records.length && !pending.length) {
-    wrap.innerHTML += '<p class="muted small">아직 점검 기록이 없습니다.</p>';
-    return;
-  }
+  const todayKey = dateKeyOf(new Date());
+  const days = homePreviewDates(HOME_PREVIEW_DAYS);
 
-  records.slice(0, 15).forEach((r) => {
-    const item = document.createElement('div');
-    const hasAnomaly = r.note || (r.equipment && Object.values(r.equipment).some((v) => v === false));
-    item.className = 'history-item' + (hasAnomaly ? ' anomaly' : '');
-    const t = r.timestamp ? formatDateTime(new Date(r.timestamp)) : '';
-    item.innerHTML = `
-      <div>
-        <div class="hi-main">${r.userName || '이름없음'} · ${r.tagLabel || ''}</div>
-        <div class="hi-sub">${t}${hasAnomaly ? ' · ⚠ 이상 있음' : ''}</div>
-      </div>
-      <div class="hi-temp">${r.temperature != null ? r.temperature + '°C' : ''}</div>
-    `;
-    wrap.appendChild(item);
+  days.forEach((d) => {
+    const key = dateKeyOf(d);
+    const isToday = key === todayKey;
+    const dayRecords = records.filter((r) => recordDateKey(r) === key);
+
+    const label = document.createElement('div');
+    label.className = 'section-label' + (isToday ? ' today' : '');
+    label.innerHTML = `${isToday ? '오늘 · ' : ''}${formatDateLabel(key)} <span class="count">${dayRecords.length}건</span>`;
+    wrap.appendChild(label);
+
+    const group = document.createElement('div');
+    group.className = 'date-records';
+
+    if (!dayRecords.length) {
+      const empty = document.createElement('div');
+      empty.className = 'record-item empty';
+      empty.textContent = '점검 기록 없음';
+      group.appendChild(empty);
+    } else {
+      const groupId = 'home-' + key;
+      dayRecords.forEach((r, idx) => {
+        const item = buildRecordItem(r);
+        if (idx >= HOME_GROUP_LIMIT) {
+          item.classList.add('hidden-extra');
+          item.dataset.group = groupId;
+        }
+        group.appendChild(item);
+      });
+
+      if (dayRecords.length > HOME_GROUP_LIMIT) {
+        const extraCount = dayRecords.length - HOME_GROUP_LIMIT;
+        const moreTile = document.createElement('div');
+        moreTile.className = 'more-tile';
+        moreTile.dataset.group = groupId;
+        moreTile.innerHTML = `<span class="more-label">더보기 (${extraCount}건 더)</span><span class="chev">⌄</span>`;
+        moreTile.addEventListener('click', () => toggleHomeGroup(groupId, extraCount));
+        group.appendChild(moreTile);
+      }
+    }
+
+    wrap.appendChild(group);
   });
+
+  if (!records.length && !pending.length) {
+    const p = document.createElement('p');
+    p.className = 'muted small';
+    p.textContent = '아직 점검 기록이 없습니다.';
+    wrap.appendChild(p);
+  }
 
   if (pending.length) {
     renderPendingBadge(pending);
   }
+}
+
+// 날짜별로 3건 넘게 있을 때 나타나는 "더보기"를 누르면 나머지를 펼치고,
+// 다시 누르면(이제 "접기") 접습니다. 펼쳐지면 타일이 그 날짜 줄의 맨 끝(오른쪽)으로 이동합니다.
+function toggleHomeGroup(groupId, extraCount) {
+  const tile = document.querySelector(`.more-tile[data-group="${groupId}"]`);
+  if (!tile) return;
+  const extras = document.querySelectorAll(`.record-item.hidden-extra[data-group="${groupId}"]`);
+  const expanding = !tile.classList.contains('expanded');
+  tile.classList.toggle('expanded', expanding);
+  extras.forEach((el) => el.classList.toggle('hidden-extra', !expanding));
+  tile.querySelector('.more-label').textContent = expanding ? '접기' : `더보기 (${extraCount}건 더)`;
 }
 
 /* ---------------- 전체 기록 화면 ----------------
