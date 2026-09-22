@@ -229,6 +229,9 @@ function startGoogleSignIn(retriesLeft) {
 }
 
 async function handleGoogleCredential(response) {
+  console.log('[진단] Google 응답:', response);
+  console.log('[진단] credential 길이:', response && response.credential ? response.credential.length : '(없음)');
+
   const statusEl = qs('onboardLoginStatus');
   statusEl.className = 'scan-status';
   statusEl.textContent = '로그인 확인 중...';
