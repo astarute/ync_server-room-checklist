@@ -812,7 +812,11 @@ function renderHistory(records, pending, offline) {
 function toggleHomeGroup(groupId, extraCount) {
   const tile = document.querySelector(`.more-tile[data-group="${groupId}"]`);
   if (!tile) return;
-  const extras = document.querySelectorAll(`.record-item.hidden-extra[data-group="${groupId}"]`);
+  // 처음 펼칠 때 이 요소들에서 hidden-extra 클래스를 떼어내므로, 다시 접을 때 찾으려면
+  // (.hidden-extra가 이미 없는 상태이니) hidden-extra 유무와 상관없이 data-group으로만 찾아야 합니다.
+  // 이전에는 ".record-item.hidden-extra[data-group=...]"로 찾아서, 펼친 뒤 두 번째 클릭(접기)
+  // 때는 조건에 안 맞아 아무것도 못 찾는 버그가 있었습니다.
+  const extras = document.querySelectorAll(`.record-item[data-group="${groupId}"]`);
   const expanding = !tile.classList.contains('expanded');
   tile.classList.toggle('expanded', expanding);
   extras.forEach((el) => el.classList.toggle('hidden-extra', !expanding));
