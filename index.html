@@ -45,6 +45,7 @@
 
   <button type="button" class="drawer-item" id="drawerServerRoom">서버실</button>
   <button type="button" class="drawer-item" id="drawerEquipRoom">장비실</button>
+  <button type="button" class="drawer-item" id="drawerRecords">기록</button>
   <button type="button" class="drawer-item" id="drawerSettings">설정</button>
 </nav>
 
@@ -62,9 +63,19 @@
     <div class="card hidden" id="onboardStep2">
       <h1>거의 다 됐어요</h1>
       <p class="muted">로그인 확인됨: <strong id="onboardConfirmedName">-</strong> (<span id="onboardConfirmedEmail">-</span>)</p>
-      <label class="field">
-        <span>직책(선택)</span>
-        <input type="text" id="onboardTeam" placeholder="예: 팀장, 근로학생">
+      <label class="field" id="onboardTeamAutoWrap">
+        <span>직책</span>
+        <input type="text" id="onboardTeamAuto" disabled>
+      </label>
+      <label class="field hidden" id="onboardTeamSelectWrap">
+        <span>직책 선택</span>
+        <select id="onboardTeamSelect">
+          <option value="">선택해주세요</option>
+          <option value="교수">교수</option>
+          <option value="조교">조교</option>
+          <option value="근로">근로</option>
+          <option value="기타">기타</option>
+        </select>
       </label>
       <button id="onboardSaveBtn" class="btn btn-primary btn-block">등록하고 시작하기</button>
     </div>
@@ -83,7 +94,13 @@
     <div class="card">
       <div class="section-header">
         <h2>최근 점검 기록</h2>
-        <button id="refreshBtn" class="icon-btn" aria-label="새로고침">🔄</button>
+        <button id="refreshBtn" class="icon-btn" aria-label="새로고침">
+          <svg id="refreshIcon" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 12a8 8 0 0 1 14.5-4.6M20 12a8 8 0 0 1-14.5 4.6"/>
+            <polyline points="18.5 3 18.5 8 13.5 8"/>
+            <polyline points="5.5 21 5.5 16 10.5 16"/>
+          </svg>
+        </button>
       </div>
       <div id="historyList" class="history-list">
         <p class="muted small">기록을 불러오는 중...</p>
@@ -115,6 +132,34 @@
       <button id="manualBtn2" class="btn btn-ghost btn-block">NFC를 쓸 수 없나요? 수동으로 확인</button>
       <p id="scanStatus2" class="scan-status"></p>
     </div>
+  </section>
+
+  <!-- 화면: 전체 기록 -->
+  <section id="screen-records" class="screen hidden">
+    <div class="card">
+      <div class="section-header">
+        <h1>전체 기록</h1>
+        <button id="recordsBackBtn" class="icon-btn" aria-label="닫기">✕</button>
+      </div>
+
+      <div class="records-filters">
+        <div class="filters-row">
+          <select id="recPlaceFilter">
+            <option value="">장소 전체</option>
+          </select>
+          <input type="date" id="recDateFilter">
+        </div>
+        <div class="filters-row chips-row">
+          <button type="button" class="chip active" data-filter="all">전체</button>
+          <button type="button" class="chip" data-filter="anomaly">⚠ 이상만</button>
+          <button type="button" class="chip" data-filter="nfc">NFC만</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="recordsList"></div>
+
+    <button id="recordsMoreBtn" class="btn btn-ghost btn-block hidden">더 보기</button>
   </section>
 
   <!-- 화면 3: 체크리스트 입력 -->
@@ -182,13 +227,8 @@
         <span>직책</span>
         <input type="text" id="setTeam">
       </label>
-      <label class="field">
-        <span>등록된 NFC 태그 (관리자용)</span>
-        <div id="tagList" class="tag-list"></div>
-        <button type="button" id="clearTagsBtn" class="btn btn-ghost">등록된 태그 초기화</button>
-      </label>
       <button id="setSaveBtn" class="btn btn-primary btn-block">저장</button>
-      <button id="setLogoutBtn" class="btn btn-ghost btn-block">로그아웃 (다른 계정으로 전환)</button>
+      <button id="setLogoutBtn" class="btn btn-ghost btn-block">로그아웃</button>
       <button id="setBackBtn" class="btn btn-ghost btn-block">뒤로</button>
     </div>
   </section>

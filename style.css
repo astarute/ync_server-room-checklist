@@ -10,6 +10,9 @@
   --ok-bg:#dcfce7;
   --danger:#dc2626;
   --radius:14px;
+  /* PC 사이드바가 상단 고정바 밑에 딱 붙도록, 상단바 실제 높이를 JS(syncTopbarHeightVar)가
+     계산해서 이 값을 갱신합니다. JS 실행 전 잠깐 쓰일 기본값입니다. */
+  --topbar-height:60px;
 }
 
 *{box-sizing:border-box;}
@@ -61,6 +64,21 @@ html,body{
   padding:6px;
   cursor:pointer;
   line-height:1;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+.icon-btn:disabled{
+  cursor:not-allowed;
+  opacity:0.55;
+}
+.icon-btn svg{
+  width:20px;
+  height:20px;
+  stroke:currentColor;
+}
+#refreshIcon{
+  transition:transform 1.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .drawer-overlay{
@@ -192,6 +210,8 @@ h2{font-size:16px;margin:0 0 8px;}
 
 input[type=text],
 input[type=number],
+input[type=date],
+select,
 textarea{
   width:100%;
   padding:12px 14px;
@@ -284,6 +304,8 @@ fieldset.field legend{
   justify-content:space-between;
 }
 .section-header .icon-btn{color:var(--primary);}
+.section-header h1,
+.section-header h2{margin:0;}
 
 .history-list{display:flex;flex-direction:column;gap:10px;}
 .history-item{
@@ -300,22 +322,16 @@ fieldset.field legend{
 .history-item .hi-temp{font-weight:700;color:var(--primary);}
 .history-item.anomaly{border-color:#fca5a5;background:#fff5f5;}
 
-.confirm-card{background:var(--ok-bg);border-color:#bbf7d0;}
 .badge{
   display:inline-block;
-  padding:4px 10px;
+  padding:2px 8px;
   border-radius:999px;
-  font-size:13px;
+  font-size:11px;
   font-weight:700;
 }
-.badge-ok{background:#16a34a;color:#fff;}
-.confirm-grid{
-  display:grid;
-  grid-template-columns:1fr 1fr 1fr;
-  gap:8px;
-  margin-top:12px;
-}
-.confirm-grid > div{font-size:13px;}
+.badge-nfc{background:#e0e7ff;color:#3730a3;}
+.badge-manual{background:#f1f5f9;color:#475569;}
+.badge-anomaly{background:#fee2e2;color:var(--danger);}
 
 .photo-preview{
   margin-top:10px;
@@ -327,28 +343,73 @@ fieldset.field legend{
 .done-card{text-align:center;padding:36px 18px;}
 .done-icon{font-size:48px;margin-bottom:6px;}
 
-.tag-list{
+/* 전체 기록 화면 */
+.records-filters{
   display:flex;
   flex-direction:column;
-  gap:6px;
+  gap:8px;
+  margin-top:14px;
+}
+.filters-row{
+  display:flex;
+  gap:8px;
+}
+.filters-row select,
+.filters-row input[type=date]{
+  flex:1;
+  padding:9px 10px;
+  font-size:13px;
+}
+.chips-row{flex-wrap:wrap;}
+.chip{
+  padding:7px 12px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  font-size:12.5px;
+  color:var(--muted);
+  background:#fff;
+  cursor:pointer;
+}
+.chip.active{
+  background:var(--primary);
+  color:#fff;
+  border-color:var(--primary);
+}
+
+.section-label{
+  font-size:12px;
+  color:var(--muted);
+  font-weight:700;
+  margin:14px 4px 8px;
+}
+
+.record-item{
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:12px 14px;
   margin-bottom:8px;
 }
-.tag-chip{
+.record-item.anomaly{
+  border-color:#fecaca;
+  background:#fffaf9;
+}
+.record-top{
   display:flex;
   justify-content:space-between;
-  align-items:center;
-  background:#f1f5f9;
-  border-radius:8px;
-  padding:8px 10px;
-  font-size:13px;
-  font-family:monospace;
+  align-items:flex-start;
+  gap:8px;
 }
-.tag-chip button{
-  background:none;
-  border:none;
-  color:var(--danger);
-  font-size:13px;
-  cursor:pointer;
+.record-main{font-size:14px;font-weight:600;color:var(--text);}
+.record-temp{font-size:14px;font-weight:700;color:var(--primary);white-space:nowrap;}
+.record-sub{
+  font-size:12px;
+  color:var(--muted);
+  margin-top:4px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
 }
 
 .toast{
@@ -381,10 +442,12 @@ fieldset.field legend{
   .drawer-overlay{display:none !important;}
   .drawer{
     position:sticky;
-    top:0;
+    /* top:0으로 두면 상단 고정바(.topbar, 얘도 sticky top:0)랑 같은 자리를 차지하려고
+       겹쳐 보였음 — 상단바의 실제 높이(--topbar-height, JS가 계산)만큼 내려서 붙임 */
+    top:var(--topbar-height);
     left:auto;
     bottom:auto;
-    height:100vh;
+    height:calc(100vh - var(--topbar-height));
     display:flex !important;
     flex-shrink:0;
     box-shadow:none;

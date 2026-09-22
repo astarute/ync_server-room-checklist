@@ -28,6 +28,12 @@ const ALLOWED_EMAIL_DOMAIN = 'ync.ac.kr';
 // (비워두면 발급 대상(aud) 검증을 건너뛰므로, 반드시 채워 넣는 것을 권장합니다.)
 const GOOGLE_CLIENT_ID = '904845440598-a9sul7p4reug9rcre031im6e0mjdunce.apps.googleusercontent.com';
 
+// 직책 자동 채우기용 시트: 같은 스프레드시트(SHEET_ID) 안에 이 이름의 탭을 만들고
+// A열=이메일, B열=이름, C열=직책 형태로 한 줄씩 채워두면, 로그인할 때 이메일로 찾아서
+// 직책을 자동으로 채워줍니다. 시트가 없거나 명단에 없는 사람은 빈 값을 돌려주고,
+// 프론트엔드에서 직접 드롭다운으로 고르게 안내합니다.
+const STAFF_SHEET_NAME = '직원명단';
+
 const HEADERS = [
   '제출시각', '점검시각', '이름', '소속', '태그ID', '위치', '확인방법',
   '위도', '경도', '온도(C)', '습도(%)',
@@ -64,11 +70,17 @@ function verifyGoogleIdToken_(idToken) {
       'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken),
       { muteHttpExceptions: true }
     );
+    Logger.log('tokeninfo 응답 코드: ' + res.getResponseCode());
+    Logger.log('tokeninfo 응답 내용: ' + res.getContentText());
     if (res.getResponseCode() !== 200) return { ok: false, error: 'invalid_token' };
     data = JSON.parse(res.getContentText());
   } catch (err) {
+    Logger.log('verify_failed 예외: ' + err);
     return { ok: false, error: 'verify_failed' };
   }
+
+  Logger.log('GOOGLE_CLIENT_ID(우리코드): ' + GOOGLE_CLIENT_ID);
+  Logger.log('aud(토큰 발급 대상): ' + data.aud);
 
   if (GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('여기에') && data.aud !== GOOGLE_CLIENT_ID) {
     return { ok: false, error: 'aud_mismatch' };
@@ -81,7 +93,33 @@ function verifyGoogleIdToken_(idToken) {
     return { ok: false, error: 'domain_not_allowed' };
   }
 
-  return { ok: true, email: data.email, name: data.name || email.split('@')[0] };
+  return {
+    ok: true,
+    email: data.email,
+    name: data.name || email.split('@')[0],
+    position: getStaffPosition_(data.email),
+  };
+}
+
+// 직원명단 시트에서 이메일로 직책을 찾아 돌려줍니다. 못 찾으면 빈 문자열.
+function getStaffPosition_(email) {
+  try {
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const sheet = ss.getSheetByName(STAFF_SHEET_NAME);
+    if (!sheet) return '';
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return '';
+    const values = sheet.getRange(2, 1, lastRow - 1, 3).getValues(); // 이메일, 이름, 직책
+    const target = String(email || '').toLowerCase();
+    for (let i = 0; i < values.length; i++) {
+      if (String(values[i][0] || '').toLowerCase() === target) {
+        return String(values[i][2] || '').trim();
+      }
+    }
+    return '';
+  } catch (err) {
+    return '';
+  }
 }
 
 function jsonOut_(obj) {
@@ -167,13 +205,20 @@ function doGet(e) {
 
   if (action === 'list') {
     const limit = Math.min(parseInt(params.limit, 10) || 15, 200);
+    const offset = Math.max(parseInt(params.offset, 10) || 0, 0);
     const sheet = getSheet_();
     const lastRow = sheet.getLastRow();
-    if (lastRow < 2) return jsonOut_({ ok: true, records: [] });
+    if (lastRow < 2) return jsonOut_({ ok: true, records: [], hasMore: false });
 
-    const startRow = Math.max(2, lastRow - limit + 1);
-    const numRows = lastRow - startRow + 1;
+    // offset은 "이미 불러온 최신순 기록 개수"입니다. 시트는 오래된 순으로 쌓이므로
+    // 맨 아래(최신)에서 offset만큼 건너뛴 지점을 이번 페이지의 끝으로 봅니다.
+    const endRow = lastRow - offset;
+    if (endRow < 2) return jsonOut_({ ok: true, records: [], hasMore: false });
+
+    const startRow = Math.max(2, endRow - limit + 1);
+    const numRows = endRow - startRow + 1;
     const values = sheet.getRange(startRow, 1, numRows, HEADERS.length).getValues();
+    const hasMore = startRow > 2;
 
     const records = values.map((row) => ({
       submittedAt: row[0],
@@ -200,7 +245,7 @@ function doGet(e) {
       userEmail: row[19],
     })).reverse(); // 최신순
 
-    return jsonOut_({ ok: true, records });
+    return jsonOut_({ ok: true, records, hasMore });
   }
 
   return jsonOut_({ ok: false, error: 'unknown_action' });

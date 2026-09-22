@@ -11,7 +11,6 @@ const LS = {
   team: 'src_user_team',
   email: 'src_user_email',
   endpoint: 'src_endpoint',
-  tags: 'src_tags',
   pending: 'src_pending',
   historyCache: 'src_history_cache',
 };
@@ -25,6 +24,14 @@ const DEFAULT_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzpXMmpLUMaGom
 // Google Cloud Console에서 만든 OAuth 클라이언트(웹 애플리케이션)의 "클라이언트 ID"를
 // 아래에 붙여넣으세요. (예: 1234567890-abcxyz.apps.googleusercontent.com)
 const GOOGLE_CLIENT_ID = '904845440598-a9sul7p4reug9rcre031im6e0mjdunce.apps.googleusercontent.com';
+
+// 관리자용: 서버실/장비실 입구에 붙인 실제 NFC 태그의 고유 시리얼 번호를 여기에 채워두면
+// 그 태그를 찍었을 때만 인식됩니다(더 이상 처음 찍은 사람이 이름을 등록하는 방식이 아닙니다).
+// 태그를 구매해 붙인 뒤, 임시로 콘솔에 serial 값을 출력해보고 그 값을 그대로 복사해 넣으세요.
+const FIXED_NFC_TAGS = {
+  server: '여기에_서버실_태그_시리얼번호',
+  equipment: '여기에_장비실_태그_시리얼번호',
+};
 
 const qs = (id) => document.getElementById(id);
 
@@ -53,12 +60,6 @@ function getUser() {
     team: localStorage.getItem(LS.team) || '',
     email: localStorage.getItem(LS.email) || '',
   };
-}
-function getTags() {
-  return loadJSON(LS.tags, []); // [{id, label, createdAt}]
-}
-function saveTags(tags) {
-  saveJSON(LS.tags, tags);
 }
 
 function pad(n) { return String(n).padStart(2, '0'); }
@@ -89,6 +90,11 @@ let pendingGoogleUser = null; // Google 로그인 확인 후, 직책 입력 전�
 function init() {
   registerServiceWorker();
   updateOnlineDot();
+  syncTopbarHeightVar();
+  if (!window.__topbarResizeBound) {
+    window.addEventListener('resize', syncTopbarHeightVar);
+    window.__topbarResizeBound = true;
+  }
   window.addEventListener('online', () => { updateOnlineDot(); flushPending(); });
   window.addEventListener('offline', updateOnlineDot);
 
@@ -113,6 +119,17 @@ function updateOnlineDot() {
   else dot.classList.add('offline');
 }
 
+// PC 화면에서 사이드바(.drawer)가 상단 고정바 바로 밑에 겹침 없이 붙도록, 상단바의
+// 실제 렌더링 높이를 측정해 CSS 변수(--topbar-height)로 갱신합니다.
+function syncTopbarHeightVar() {
+  const topbar = document.querySelector('.topbar');
+  if (!topbar) return;
+  const height = topbar.offsetHeight;
+  if (height > 0) {
+    document.documentElement.style.setProperty('--topbar-height', height + 'px');
+  }
+}
+
 function startClock() {
   const tick = () => { qs('nowClock').textContent = formatDateTime(new Date()).slice(11); };
   tick();
@@ -133,18 +150,12 @@ function bindEvents() {
   qs('setBackBtn').addEventListener('click', () => showScreen('screen-home'));
   qs('setSaveBtn').addEventListener('click', onSettingsSave);
   qs('setLogoutBtn').addEventListener('click', onLogout);
-  qs('clearTagsBtn').addEventListener('click', () => {
-    if (confirm('등록된 NFC 태그를 모두 초기화할까요? 다음 스캔 시 다시 등록해야 합니다.')) {
-      saveTags([]);
-      renderTagList();
-      toast('태그 목록을 초기화했습니다.');
-    }
-  });
   qs('menuBtn').addEventListener('click', openDrawer);
   qs('drawerOverlay').addEventListener('click', closeDrawer);
   qs('drawerHome').addEventListener('click', () => { closeDrawer(); showScreen('screen-home'); loadHistory(); });
   qs('drawerServerRoom').addEventListener('click', () => { closeDrawer(); showScreen('screen-server'); });
   qs('drawerEquipRoom').addEventListener('click', () => { closeDrawer(); showScreen('screen-equipment'); });
+  qs('drawerRecords').addEventListener('click', () => { closeDrawer(); openRecords(); });
   qs('drawerSettings').addEventListener('click', () => { closeDrawer(); openSettings(); });
   qs('drawerRoomsToggle').addEventListener('click', toggleRoomsSubmenu);
   document.querySelectorAll('.drawer-subitem').forEach((btn) => {
@@ -158,11 +169,43 @@ function bindEvents() {
   qs('manualBtn').addEventListener('click', () => startManualCheckIn('server'));
   qs('scanBtn2').addEventListener('click', () => startNfcScan('equipment'));
   qs('manualBtn2').addEventListener('click', () => startManualCheckIn('equipment'));
-  qs('refreshBtn').addEventListener('click', loadHistory);
+  qs('refreshBtn').addEventListener('click', () => { spinRefreshIcon(); loadHistory(); });
+  qs('refreshIcon').addEventListener('transitionend', (e) => {
+    if (e.propertyName === 'transform') qs('refreshBtn').disabled = false;
+  });
   qs('cancelBtn').addEventListener('click', () => showScreen('screen-home'));
   qs('doneHomeBtn').addEventListener('click', () => { showScreen('screen-home'); loadHistory(); });
   qs('checklistForm').addEventListener('submit', onSubmitChecklist);
   qs('fPhoto').addEventListener('change', onPhotoChange);
+
+  qs('recordsBackBtn').addEventListener('click', () => showScreen('screen-home'));
+  qs('recordsMoreBtn').addEventListener('click', loadMoreRecords);
+  qs('recPlaceFilter').addEventListener('change', () => {
+    recordsState.place = qs('recPlaceFilter').value;
+    renderRecordsList();
+  });
+  qs('recDateFilter').addEventListener('change', () => {
+    recordsState.date = qs('recDateFilter').value;
+    renderRecordsList();
+  });
+  document.querySelectorAll('#screen-records .chip').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#screen-records .chip').forEach((c) => c.classList.remove('active'));
+      btn.classList.add('active');
+      recordsState.filter = btn.dataset.filter;
+      renderRecordsList();
+    });
+  });
+}
+
+// 새로고침 아이콘을 클릭할 때마다 항상 화살표 방향(정방향)으로만 720도씩 더 돌립니다.
+// 값을 절대 줄이지 않고 누적만 시키기 때문에 역방향으로 튀는 일이 없고, 회전이 끝날
+// 때까지는 버튼을 잠가서 연타해도 애니메이션이 꼬이지 않게 합니다.
+let refreshRotation = 0;
+function spinRefreshIcon() {
+  qs('refreshBtn').disabled = true;
+  refreshRotation += 720;
+  qs('refreshIcon').style.transform = `rotate(${refreshRotation}deg)`;
 }
 
 function onOnboardSave() {
@@ -172,9 +215,21 @@ function onOnboardSave() {
     startGoogleSignIn();
     return;
   }
+
+  // 직원명단 시트에 있던 사람은 자동으로 채워진 직책을 그대로 쓰고,
+  // 명단에 없던 사람은 드롭다운에서 고른 값을 써야 합니다.
+  let team = pendingGoogleUser.position || '';
+  if (!team) {
+    team = qs('onboardTeamSelect').value;
+    if (!team) {
+      toast('직책을 선택해주세요.');
+      return;
+    }
+  }
+
   localStorage.setItem(LS.name, pendingGoogleUser.name);
   localStorage.setItem(LS.email, pendingGoogleUser.email);
-  localStorage.setItem(LS.team, qs('onboardTeam').value.trim());
+  localStorage.setItem(LS.team, team);
   pendingGoogleUser = null;
   init();
 }
@@ -219,6 +274,9 @@ function startGoogleSignIn(retriesLeft) {
     google.accounts.id.initialize({
       client_id: GOOGLE_CLIENT_ID,
       callback: handleGoogleCredential,
+      // 사파리(ITP) 브라우저에서도 팝업 리다이렉트 없이 지금과 같은 방식으로
+      // 로그인 결과를 콜백으로 받을 수 있도록 해주는 옵션입니다.
+      itp_support: true,
     });
     window.__gsiInited = true;
   }
@@ -259,11 +317,23 @@ async function handleGoogleCredential(response) {
       return;
     }
 
-    pendingGoogleUser = { name: data.name, email: data.email };
+    pendingGoogleUser = { name: data.name, email: data.email, position: data.position || '' };
     qs('onboardConfirmedName').textContent = data.name;
     qs('onboardConfirmedEmail').textContent = data.email;
     qs('onboardStep1').classList.add('hidden');
     qs('onboardStep2').classList.remove('hidden');
+
+    // 직원명단 시트에서 이메일로 직책을 찾았으면 자동으로 채워서 보여주고,
+    // 못 찾았으면 직접 골라야 하는 드롭다운을 보여줍니다.
+    if (pendingGoogleUser.position) {
+      qs('onboardTeamAuto').value = pendingGoogleUser.position;
+      qs('onboardTeamAutoWrap').classList.remove('hidden');
+      qs('onboardTeamSelectWrap').classList.add('hidden');
+    } else {
+      qs('onboardTeamAutoWrap').classList.add('hidden');
+      qs('onboardTeamSelectWrap').classList.remove('hidden');
+      qs('onboardTeamSelect').value = '';
+    }
   } catch (err) {
     statusEl.className = 'scan-status error';
     statusEl.textContent = '네트워크 오류로 로그인 확인에 실패했습니다. 다시 시도해주세요.';
@@ -294,31 +364,7 @@ function openSettings() {
   qs('setName').value = user.name;
   qs('setEmail').value = user.email;
   qs('setTeam').value = user.team;
-  renderTagList();
   showScreen('screen-settings');
-}
-
-function renderTagList() {
-  const tags = getTags();
-  const wrap = qs('tagList');
-  wrap.innerHTML = '';
-  if (!tags.length) {
-    wrap.innerHTML = '<p class="muted small">등록된 태그가 없습니다. 서버실에서 NFC 스캔을 한 번 하면 자동으로 등록할 수 있습니다.</p>';
-    return;
-  }
-  tags.forEach((t) => {
-    const row = document.createElement('div');
-    row.className = 'tag-chip';
-    row.innerHTML = `<span>${t.label} (${t.id})</span>`;
-    const btn = document.createElement('button');
-    btn.textContent = '삭제';
-    btn.addEventListener('click', () => {
-      saveTags(getTags().filter((x) => x.id !== t.id));
-      renderTagList();
-    });
-    row.appendChild(btn);
-    wrap.appendChild(row);
-  });
 }
 
 function onSettingsSave() {
@@ -382,26 +428,24 @@ async function startNfcScan(screenKey) {
 function handleTagRead(serial, screenKey) {
   const cfg = NFC_SCREENS[screenKey];
   const statusEl = qs(cfg.statusId);
-  const tags = getTags();
-  let tag = tags.find((t) => t.id === serial);
+  const expected = FIXED_NFC_TAGS[screenKey];
 
-  if (!tag) {
-    const label = prompt('처음 인식된 태그입니다. 이 위치의 이름을 입력해주세요 (예: 본관 서버실 입구)', cfg.defaultLabel);
-    if (label === null) {
-      statusEl.className = 'scan-status';
-      statusEl.textContent = '등록이 취소되었습니다.';
-      return;
-    }
-    tag = { id: serial, label: label.trim() || cfg.defaultLabel, createdAt: Date.now() };
-    tags.push(tag);
-    saveTags(tags);
-    toast('새 태그가 등록되었습니다: ' + tag.label);
+  if (!expected || expected.startsWith('여기에_')) {
+    statusEl.className = 'scan-status error';
+    statusEl.textContent = '이 위치의 NFC 태그가 아직 코드에 등록되지 않았습니다. 관리자에게 문의해주세요.';
+    return;
+  }
+
+  if (serial !== expected) {
+    statusEl.className = 'scan-status error';
+    statusEl.textContent = '이 태그는 ' + cfg.defaultLabel + ' 태그가 아닙니다. 올바른 위치의 태그를 찍어주세요.';
+    return;
   }
 
   statusEl.className = 'scan-status ok';
-  statusEl.textContent = '✔ 위치가 확인되었습니다: ' + tag.label;
+  statusEl.textContent = '✔ 위치가 확인되었습니다: ' + cfg.defaultLabel;
 
-  openChecklist({ tagId: tag.id, tagLabel: tag.label, method: 'nfc' });
+  openChecklist({ tagId: serial, tagLabel: cfg.defaultLabel, method: 'nfc' });
 }
 
 function startManualCheckIn(screenKey) {
@@ -626,6 +670,146 @@ function renderHistory(records, pending, offline) {
   if (pending.length) {
     renderPendingBadge(pending);
   }
+}
+
+/* ---------------- 전체 기록 화면 ----------------
+ * 홈 화면의 "최근 점검 기록"은 15개만 미리보기로 보여주는 반면, 여기서는 "더 보기"를
+ * 눌러 계속 이어서 불러올 수 있고, 장소/날짜/이상유무/NFC 여부로 걸러볼 수 있습니다.
+ * 필터는 지금까지 불러온 기록(recordsState.items) 안에서만 적용됩니다 — 더 보기를 눌러
+ * 기록을 더 불러올수록 필터가 적용되는 범위도 함께 넓어집니다.
+ */
+
+let recordsState = { items: [], offset: 0, hasMore: true, filter: 'all', place: '', date: '' };
+
+function openRecords() {
+  recordsState = { items: [], offset: 0, hasMore: true, filter: 'all', place: '', date: '' };
+  qs('recPlaceFilter').innerHTML = '<option value="">장소 전체</option>';
+  qs('recDateFilter').value = '';
+  document.querySelectorAll('#screen-records .chip').forEach((c) => c.classList.toggle('active', c.dataset.filter === 'all'));
+  qs('recordsList').innerHTML = '<p class="muted small">불러오는 중...</p>';
+  qs('recordsMoreBtn').classList.add('hidden');
+  showScreen('screen-records');
+  loadMoreRecords();
+}
+
+async function loadMoreRecords() {
+  const endpoint = getEndpoint();
+  if (!endpoint) {
+    qs('recordsList').innerHTML = '<p class="muted small">설정에서 서버 저장 주소를 입력하면 기록을 볼 수 있습니다.</p>';
+    qs('recordsMoreBtn').classList.add('hidden');
+    return;
+  }
+
+  const moreBtn = qs('recordsMoreBtn');
+  const alreadyHadItems = recordsState.items.length > 0;
+  moreBtn.disabled = true;
+  moreBtn.textContent = '불러오는 중...';
+
+  try {
+    const url = endpoint + (endpoint.includes('?') ? '&' : '?') +
+      'action=list&limit=20&offset=' + recordsState.offset;
+    const res = await fetch(url);
+    const data = await res.json();
+    const newRecords = (data && data.records) || [];
+
+    recordsState.items = recordsState.items.concat(newRecords);
+    recordsState.offset += newRecords.length;
+    recordsState.hasMore = !!(data && data.hasMore) && newRecords.length > 0;
+
+    updatePlaceFilterOptions(recordsState.items);
+    renderRecordsList();
+  } catch (err) {
+    if (!alreadyHadItems) {
+      qs('recordsList').innerHTML = '<p class="muted small">기록을 불러오지 못했습니다. 네트워크를 확인해주세요.</p>';
+    } else {
+      toast('추가 기록을 불러오지 못했습니다.');
+    }
+  } finally {
+    moreBtn.disabled = false;
+    moreBtn.textContent = '더 보기';
+  }
+}
+
+function updatePlaceFilterOptions(items) {
+  const select = qs('recPlaceFilter');
+  const current = select.value;
+  const places = Array.from(new Set(items.map((r) => r.tagLabel).filter(Boolean)));
+  select.innerHTML = '<option value="">장소 전체</option>' +
+    places.map((p) => `<option value="${p}">${p}</option>`).join('');
+  select.value = places.includes(current) ? current : '';
+}
+
+function recordDateKey(r) {
+  if (!r.timestamp) return '';
+  const d = new Date(r.timestamp);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
+function formatDateLabel(dateKey) {
+  const parts = dateKey.split('-').map(Number);
+  const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+  return `${parts[1]}월 ${parts[2]}일 (${WEEKDAY_KO[dt.getDay()]})`;
+}
+
+function recordHasAnomaly(r) {
+  return !!(r.note || (r.equipment && Object.values(r.equipment).some((v) => v === false)));
+}
+
+function recordMatchesFilters(r) {
+  if (recordsState.place && r.tagLabel !== recordsState.place) return false;
+  if (recordsState.date && recordDateKey(r) !== recordsState.date) return false;
+  if (recordsState.filter === 'nfc' && r.method !== 'nfc') return false;
+  if (recordsState.filter === 'anomaly' && !recordHasAnomaly(r)) return false;
+  return true;
+}
+
+function renderRecordsList() {
+  const wrap = qs('recordsList');
+  const filtered = recordsState.items.filter(recordMatchesFilters);
+  wrap.innerHTML = '';
+
+  if (!filtered.length) {
+    wrap.innerHTML = '<p class="muted small">조건에 맞는 기록이 없습니다.</p>';
+  } else {
+    let lastDateKey = null;
+    filtered.forEach((r) => {
+      const dateKey = recordDateKey(r);
+      if (dateKey !== lastDateKey) {
+        const label = document.createElement('div');
+        label.className = 'section-label';
+        label.textContent = dateKey ? formatDateLabel(dateKey) : '날짜 미상';
+        wrap.appendChild(label);
+        lastDateKey = dateKey;
+      }
+      wrap.appendChild(buildRecordItem(r));
+    });
+  }
+
+  qs('recordsMoreBtn').classList.toggle('hidden', !recordsState.hasMore);
+}
+
+function buildRecordItem(r) {
+  const hasAnomaly = recordHasAnomaly(r);
+  const item = document.createElement('div');
+  item.className = 'record-item' + (hasAnomaly ? ' anomaly' : '');
+  const time = r.timestamp ? formatDateTime(new Date(r.timestamp)).slice(11) : '';
+  const methodBadge = r.method === 'nfc'
+    ? '<span class="badge badge-nfc">NFC</span>'
+    : '<span class="badge badge-manual">수동</span>';
+  const anomalyBadge = hasAnomaly ? '<span class="badge badge-anomaly">⚠ 이상 있음</span>' : '';
+  item.innerHTML = `
+    <div class="record-top">
+      <div class="record-main">${r.userName || '이름없음'} · ${r.tagLabel || ''}</div>
+      <div class="record-temp">${r.temperature != null ? r.temperature + '°C' : ''}</div>
+    </div>
+    <div class="record-sub">
+      <span>${time}</span>
+      ${methodBadge}
+      ${anomalyBadge}
+    </div>
+  `;
+  return item;
 }
 
 document.addEventListener('DOMContentLoaded', init);
