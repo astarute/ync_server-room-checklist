@@ -71,6 +71,30 @@
 
       <div id="gsiButtonContainer" class="gsi-btn-wrap"></div>
       <p id="onboardLoginStatus" class="scan-status"></p>
+
+      <!-- 로그인 처리 중(아이디/비번, 구글 로그인 공용) 오버레이: 점 4개가 순서대로
+           튀어올랐다가 정상에서 아이콘(방패/자물쇠/체크/열쇠)으로 잠깐 바뀝니다. -->
+      <div class="login-loading-overlay hidden" id="loginLoadingOverlay">
+        <div class="login-dots-wave">
+          <div class="login-dot" id="loginDot0">
+            <span class="dot-plain"></span>
+            <span class="dot-icon"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z"/></svg></span>
+          </div>
+          <div class="login-dot" id="loginDot1">
+            <span class="dot-plain"></span>
+            <span class="dot-icon"><svg viewBox="0 0 24 24"><rect x="4.5" y="11" width="15" height="10" rx="2.2"/><path d="M7.5 11V8a4.5 4.5 0 0 1 9 0v3"/></svg></span>
+          </div>
+          <div class="login-dot" id="loginDot2">
+            <span class="dot-plain"></span>
+            <span class="dot-icon"><svg viewBox="0 0 24 24"><polyline points="5 12.5 10 17.5 19 6.5"/></svg></span>
+          </div>
+          <div class="login-dot" id="loginDot3">
+            <span class="dot-plain"></span>
+            <span class="dot-icon"><svg viewBox="0 0 24 24"><circle cx="7.5" cy="16.5" r="3.3"/><path d="M9.8 14.2 18 6l2 2-2 2 1.6 1.6-2.3 2.3-1.6-1.6-1.9 1.9"/></svg></span>
+          </div>
+        </div>
+        <div class="loading-text">로그인 확인 중입니다...</div>
+      </div>
     </div>
 
     <div class="card hidden" id="onboardStep2">
@@ -194,9 +218,36 @@
       </div>
     </div>
 
-    <div id="recordsList"></div>
+    <!-- 모바일: 기존 리스트 -->
+    <div id="recordsListWrap">
+      <div id="recordsList"></div>
+      <button id="recordsMoreBtn" class="btn btn-ghost btn-block hidden">더 보기</button>
+    </div>
 
-    <button id="recordsMoreBtn" class="btn btn-ghost btn-block hidden">더 보기</button>
+    <!-- 웹(PC) 전용: 달력형 -->
+    <div id="recordsCalendarWrap">
+      <div class="cal-wrap">
+        <div class="card cal-card">
+          <div class="cal-nav">
+            <button type="button" id="calPrevBtn" class="icon-btn" aria-label="이전 달">‹</button>
+            <div class="month-label" id="calMonthLabel">-</div>
+            <button type="button" id="calNextBtn" class="icon-btn" aria-label="다음 달">›</button>
+          </div>
+          <div class="cal-dow-row">
+            <div class="cal-dow sun">일</div><div class="cal-dow">월</div><div class="cal-dow">화</div>
+            <div class="cal-dow">수</div><div class="cal-dow">목</div><div class="cal-dow">금</div><div class="cal-dow sat">토</div>
+          </div>
+          <div class="cal-grid" id="calGrid"></div>
+          <button type="button" id="calLoadMoreBtn" class="btn btn-ghost btn-block hidden">이전 기록 더 불러오기</button>
+        </div>
+
+        <div class="card day-card">
+          <h2 id="dayCardTitle">날짜를 선택해주세요</h2>
+          <div class="day-sub" id="dayCardSub"></div>
+          <div id="dayCardList"></div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- 화면 3: 체크리스트 입력 -->
@@ -260,10 +311,23 @@
         <span>이메일</span>
         <input type="text" id="setEmail" disabled>
       </label>
+      <button type="button" id="setAccountMgmtBtn" class="btn btn-ghost btn-block">계정관리</button>
       <button id="setSaveBtn" class="btn btn-primary btn-block">저장</button>
       <button id="setLogoutBtn" class="btn btn-ghost btn-block">로그아웃</button>
       <button id="setBackBtn" class="btn btn-ghost btn-block">뒤로</button>
     </div>
+  </section>
+
+  <!-- 설정 > 계정관리 > 이 계정에 연결된 기기 -->
+  <section id="screen-account-devices" class="screen hidden">
+    <div class="card">
+      <div class="section-header">
+        <h1>이 계정에 연결된 기기</h1>
+        <button id="devicesBackBtn" class="icon-btn" aria-label="닫기">✕</button>
+      </div>
+      <p class="muted small">현재 로그인 상태로 기록된 기기 목록입니다. 다른 기기를 로그아웃 처리하면, 그 기기가 다음에 인터넷에 연결될 때 반영됩니다.</p>
+    </div>
+    <div id="devicesList"><p class="muted small">불러오는 중...</p></div>
   </section>
 
 </main>

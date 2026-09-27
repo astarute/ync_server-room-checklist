@@ -41,6 +41,12 @@ const ADMIN_PW = 'a1234567!';
 // 프론트엔드에서 직접 드롭다운으로 고르게 안내합니다.
 const STAFF_SHEET_NAME = '직원명단';
 
+// 계정관리(연결된 기기 목록)용 시트: 로그인/로그아웃 "기록"만 남깁니다. 하트비트(주기적
+// 접속 확인) 없이, 계정+기기ID 조합으로 로그인 기록은 있는데 그 뒤로 로그아웃 기록이
+// 없으면 "지금 로그인 중"으로 간주하는 방식입니다. A열=계정, B열=기기ID, C열=기기이름,
+// D열=로그인시각, E열=로그아웃시각(비어있으면 아직 로그인 중).
+const DEVICE_SHEET_NAME = '기기세션';
+
 const HEADERS = [
   '제출시각', '점검시각', '이름', '소속', '태그ID', '위치', '확인방법',
   '위도', '경도', '온도(C)', '습도(%)',
@@ -161,6 +167,81 @@ function verifyAdminLogin_(id, pw) {
   return { ok: true, email: '', name: '관리자', position: '' };
 }
 
+function getDeviceSheet_() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sheet = ss.getSheetByName(DEVICE_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(DEVICE_SHEET_NAME);
+    sheet.appendRow(['계정', '기기ID', '기기이름', '로그인시각', '로그아웃시각']);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+// 로그인할 때마다 새 줄을 하나 추가합니다(그 기기의 새 "세션"). 로그아웃 시각은 비워둡니다.
+function registerDevice_(account, deviceId, deviceName) {
+  if (!account || !deviceId) return { ok: false, error: 'missing_params' };
+  const sheet = getDeviceSheet_();
+  sheet.appendRow([account, deviceId, deviceName || '', new Date(), '']);
+  return { ok: true };
+}
+
+// 그 계정의 기기들 중, 로그아웃 기록이 아직 없는(=로그인 중인) 기기만 돌려줍니다.
+// 같은 기기가 여러 번 로그인했을 수 있어, 기기ID별로 가장 최근 로그인 줄만 봅니다.
+function listDevices_(account) {
+  if (!account) return { ok: false, error: 'missing_account' };
+  const sheet = getDeviceSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { ok: true, devices: [] };
+
+  const values = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  const activeByDevice = {};
+
+  values.forEach((row) => {
+    const acc = row[0], deviceId = row[1], deviceName = row[2], loginAt = row[3], logoutAt = row[4];
+    if (String(acc) !== String(account)) return;
+    if (logoutAt) return; // 이미 로그아웃 기록이 있는 세션은 제외
+
+    const existing = activeByDevice[deviceId];
+    if (!existing || new Date(loginAt) > new Date(existing.loginAt)) {
+      activeByDevice[deviceId] = { deviceId: String(deviceId), deviceName: String(deviceName || ''), loginAt: loginAt };
+    }
+  });
+
+  const devices = Object.keys(activeByDevice)
+    .map((k) => activeByDevice[k])
+    .sort((a, b) => new Date(b.loginAt) - new Date(a.loginAt));
+
+  return { ok: true, devices: devices };
+}
+
+// 그 계정+기기ID의 "아직 로그아웃 안 된" 줄 중 가장 최근 것에 로그아웃 시각을 채웁니다.
+function logoutDevice_(account, deviceId) {
+  if (!account || !deviceId) return { ok: false, error: 'missing_params' };
+  const sheet = getDeviceSheet_();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { ok: true };
+
+  const values = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  let targetRow = -1;
+  let targetTime = null;
+
+  values.forEach((row, idx) => {
+    const acc = row[0], devId = row[1], loginAt = row[3], logoutAt = row[4];
+    if (String(acc) !== String(account) || String(devId) !== String(deviceId) || logoutAt) return;
+    const t = new Date(loginAt);
+    if (!targetTime || t > targetTime) {
+      targetTime = t;
+      targetRow = idx + 2; // 헤더 줄 + 0-index 보정
+    }
+  });
+
+  if (targetRow > 0) {
+    sheet.getRange(targetRow, 5).setValue(new Date());
+  }
+  return { ok: true };
+}
+
 function jsonOut_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
@@ -196,6 +277,14 @@ function doPost(e) {
 
     if (body.action === 'adminLogin') {
       return jsonOut_(verifyAdminLogin_(body.id, body.pw));
+    }
+
+    if (body.action === 'registerDevice') {
+      return jsonOut_(registerDevice_(body.account, body.deviceId, body.deviceName));
+    }
+
+    if (body.action === 'logoutDevice') {
+      return jsonOut_(logoutDevice_(body.account, body.deviceId));
     }
 
     if (body.action !== 'submit' || !body.record) {
@@ -289,6 +378,10 @@ function doGet(e) {
     })).reverse(); // 최신순
 
     return jsonOut_({ ok: true, records, hasMore });
+  }
+
+  if (action === 'listDevices') {
+    return jsonOut_(listDevices_(params.account));
   }
 
   return jsonOut_({ ok: false, error: 'unknown_action' });

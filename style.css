@@ -178,6 +178,11 @@ html,body{
   background:#f1f5f9;
 }
 
+/* 강의실 메뉴는 더 이상 쓰지 않아 웹/모바일 모두에서 숨깁니다
+   (온도체크는 서버실/장비실만 사용 — 웹에서는 이 두 개도 아래 미디어쿼리에서 추가로 숨깁니다). */
+#drawerRoomsToggle,
+#roomsSubmenu{display:none;}
+
 main{
   max-width:520px;
   margin:0 auto;
@@ -302,6 +307,39 @@ input:disabled{
   height:1px;
   background:var(--border);
 }
+
+/* 로그인 처리 중 오버레이(아이디/비번, 구글 로그인 공용): 카드 전체를 덮고
+   점 4개가 순서대로 튀어올랐다가 정상에서 아이콘으로 바뀝니다. JS(showLoginLoading)가
+   .hidden을 떼고 requestAnimationFrame으로 애니메이션을 직접 구동합니다. */
+#onboardStep1{position:relative;}
+.login-loading-overlay{
+  position:absolute;
+  inset:0;
+  background:rgba(255,255,255,0.94);
+  border-radius:var(--radius);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:16px;
+  z-index:5;
+}
+.login-loading-overlay.hidden{display:none;}
+.login-dots-wave{display:flex;align-items:flex-end;gap:11px;height:30px;}
+.login-dot{position:relative;width:16px;height:16px;will-change:transform;}
+.login-dot .dot-plain{
+  position:absolute;left:3px;top:3px;width:10px;height:10px;border-radius:50%;
+  background:var(--primary);
+}
+.login-dot .dot-icon{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  opacity:0;color:var(--primary);
+}
+.login-dot .dot-icon svg{
+  width:15px;height:15px;stroke:currentColor;fill:none;
+  stroke-width:2.3;stroke-linecap:round;stroke-linejoin:round;
+}
+.login-loading-overlay .loading-text{font-size:13.5px;font-weight:600;color:var(--primary);}
 
 fieldset.field{
   border:1px solid var(--border);
@@ -451,7 +489,35 @@ fieldset.field legend{
 .done-card{text-align:center;padding:36px 18px;}
 .done-icon{font-size:48px;margin-bottom:6px;}
 
-/* 전체 기록 화면 */
+/* 설정 > 계정관리 > 연결된 기기 목록 */
+.device-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:14px 16px;
+  margin-bottom:10px;
+}
+.device-name{font-size:14px;font-weight:700;color:var(--text);}
+.device-sub{font-size:12px;color:var(--muted);margin-top:3px;}
+.badge-me{
+  display:inline-block;
+  margin-left:6px;
+  font-size:10.5px;
+  font-weight:700;
+  background:#e6eafc;
+  color:var(--primary);
+  border-radius:999px;
+  padding:2px 8px;
+}
+.device-logout-btn{width:auto;flex-shrink:0;margin-top:0;padding:8px 14px;font-size:13px;}
+
+/* 전체 기록 화면: 모바일 기본은 기존 리스트, PC(아래 미디어쿼리)는 달력형으로 바꿔치기 */
+#recordsCalendarWrap{display:none;}
+
 .records-filters{
   display:flex;
   flex-direction:column;
@@ -731,6 +797,63 @@ fieldset.field legend{
   /* PC 폭에서는 모바일 아코디언 대신 기존 그리드+더보기 카드를 보여줍니다. */
   .mobile-history{display:none;}
   .records-card{display:block;}
+
+  /* 웹(PC)에서는 온도체크 관련 탭(서버실/장비실)도 숨기고 홈·기록·설정만 남깁니다.
+     점검 제출은 모바일에서만 하도록 설계되었습니다. */
+  #drawerServerRoom,
+  #drawerEquipRoom{display:none;}
+
+  /* 전체 기록 화면: PC에서는 리스트 대신 달력형을 보여줍니다.
+     날짜는 달력에서 직접 고르므로 날짜 필터 입력칸은 숨깁니다. */
+  #recordsListWrap{display:none;}
+  #recordsCalendarWrap{display:block;}
+  #recDateFilter{display:none;}
+
+  .cal-wrap{display:flex;gap:20px;align-items:flex-start;}
+  .cal-card{flex:1.3;}
+  .day-card{flex:1;position:sticky;top:calc(var(--topbar-height) + 20px);}
+  .cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .cal-nav .icon-btn{
+    color:var(--primary);border:1px solid var(--border);border-radius:8px;
+    width:30px;height:30px;font-size:16px;
+  }
+  .month-label{font-size:16px;font-weight:700;}
+  .cal-dow-row{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:4px;}
+  .cal-dow{text-align:center;font-size:11.5px;color:var(--muted);font-weight:700;}
+  .cal-dow.sun{color:var(--danger);}
+  .cal-dow.sat{color:#2563eb;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+  .cal-cell{
+    aspect-ratio:1/0.82;
+    border-radius:10px;
+    border:1px solid var(--border);
+    background:#fafbfd;
+    padding:8px;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    cursor:pointer;
+  }
+  .cal-cell.muted-cell{opacity:0.35;cursor:default;}
+  .cal-cell .d-num{font-size:12.5px;font-weight:600;color:var(--text);}
+  .cal-cell .d-count{
+    align-self:flex-end;
+    font-size:10.5px;
+    font-weight:700;
+    color:var(--primary);
+    background:#e6eafc;
+    border-radius:999px;
+    padding:2px 7px;
+  }
+  .cal-cell.empty .d-count{display:none;}
+  .cal-cell.today{border-color:var(--primary);box-shadow:0 0 0 1.5px var(--primary) inset;}
+  .cal-cell.selected{background:var(--primary);}
+  .cal-cell.selected .d-num{color:#fff;}
+  .cal-cell.selected .d-count{background:#ffffff33;color:#fff;}
+  .cal-cell.has-anomaly{border-color:#fecaca;}
+  .cal-cell .warn{font-size:11px;color:var(--danger);}
+  .cal-cell.selected .warn{color:#fecaca;}
+  .day-card #dayCardList .record-item{margin-bottom:8px;}
 
   /* 입력폼 화면들은 옆으로 너무 길어지지 않게 적당한 너비로 유지 */
   #screen-onboard .card,

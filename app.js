@@ -13,6 +13,7 @@ const LS = {
   endpoint: 'src_endpoint',
   pending: 'src_pending',
   historyCache: 'src_history_cache',
+  deviceId: 'src_device_id',
 };
 
 // 관리자용: 여기에 배포한 Apps Script 웹앱 주소를 미리 채워두면, 사용자가 설정에서
@@ -62,6 +63,38 @@ function getUser() {
   };
 }
 
+/* 계정관리(연결된 기기 목록)용: 이 기기를 구분할 고유 ID를 한 번 만들어 저장해두고
+   계속 재사용합니다. 로그인 여부와 무관하게 기기 자체에 고정된 값입니다. */
+function getDeviceId() {
+  let id = localStorage.getItem(LS.deviceId);
+  if (!id) {
+    id = 'dev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem(LS.deviceId, id);
+  }
+  return id;
+}
+
+// User-Agent에서 대략적인 OS/브라우저 이름만 뽑아 사람이 알아보기 쉬운 이름으로 만듭니다.
+// 정확한 기기 모델명까지는 알 수 없지만, 목록에서 "어느 기기인지" 구분하는 용도로는 충분합니다.
+function getDeviceName() {
+  const ua = navigator.userAgent || '';
+  let os = '알 수 없는 기기';
+  if (/Android/i.test(ua)) os = 'Android';
+  else if (/iPhone|iPad|iPod/i.test(ua)) os = 'iOS';
+  else if (/Windows/i.test(ua)) os = 'Windows';
+  else if (/Mac OS/i.test(ua)) os = 'Mac';
+  else if (/Linux/i.test(ua)) os = 'Linux';
+
+  let browser = '';
+  if (/Edg\//i.test(ua)) browser = 'Edge';
+  else if (/OPR\//i.test(ua)) browser = 'Opera';
+  else if (/Chrome\//i.test(ua)) browser = 'Chrome';
+  else if (/Firefox\//i.test(ua)) browser = 'Firefox';
+  else if (/Safari\//i.test(ua)) browser = 'Safari';
+
+  return browser ? `${os} · ${browser}` : os;
+}
+
 function pad(n) { return String(n).padStart(2, '0'); }
 function formatDateTime(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
@@ -83,6 +116,72 @@ function toast(msg) {
   el.classList.remove('hidden');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.add('hidden'), 2600);
+}
+
+/* ---------------- 로그인 로딩 표시 ----------------
+ * 아이디/비번 로그인과 구글 로그인 둘 다, 서버 응답을 기다리는 동안 같은 오버레이를
+ * 띄웁니다. 점 4개가 순서대로만(겹치지 않게) 튀어오르고, 정상에 도달하면 잠깐
+ * 아이콘(방패/자물쇠/체크/열쇠)으로 바뀌었다가 다시 점으로 내려옵니다.
+ * CSS 애니메이션 대신 requestAnimationFrame으로 매 프레임 직접 계산해서, 4개 점의
+ * 타이밍(느린 상승 + 정상 유지 + 빠른 하강)을 정확히 맞춥니다.
+ */
+const LOGIN_LOADING_DURATION = 3200; // ms, 점 4개가 한 바퀴 도는 전체 시간
+const LOGIN_LOADING_SEG = LOGIN_LOADING_DURATION / 4; // 점 하나가 맡는 구간
+const LOGIN_LOADING_RISE_FRAC = 0.62; // 그 구간 중 "올라가는 데" 쓰는 비율 → 느리게
+const LOGIN_LOADING_HOLD_FRAC = 0.20; // 정상에서 아이콘으로 멈춰있는 비율
+
+let loginLoadingRaf = null;
+let loginLoadingStart = 0;
+
+function loginLoadingEase(x) {
+  return 0.5 - 0.5 * Math.cos(Math.PI * Math.max(0, Math.min(1, x)));
+}
+
+function loginLoadingFrame(now) {
+  const t = (now - loginLoadingStart) % LOGIN_LOADING_DURATION;
+  for (let i = 0; i < 4; i++) {
+    const wrap = qs('loginDot' + i);
+    if (!wrap) continue;
+    const plain = wrap.querySelector('.dot-plain');
+    const icon = wrap.querySelector('.dot-icon');
+    const local = t - i * LOGIN_LOADING_SEG;
+    let y = 0;
+    let showIcon = false;
+    if (local >= 0 && local < LOGIN_LOADING_SEG) {
+      const riseEnd = LOGIN_LOADING_SEG * LOGIN_LOADING_RISE_FRAC;
+      const holdEnd = riseEnd + LOGIN_LOADING_SEG * LOGIN_LOADING_HOLD_FRAC;
+      if (local <= riseEnd) {
+        y = -11 * loginLoadingEase(local / riseEnd);
+        showIcon = local >= riseEnd * 0.82;
+      } else if (local <= holdEnd) {
+        y = -11;
+        showIcon = true;
+      } else {
+        const frac = (local - holdEnd) / (LOGIN_LOADING_SEG - holdEnd);
+        y = -11 * (1 - loginLoadingEase(frac));
+        showIcon = frac < 0.25;
+      }
+    }
+    wrap.style.transform = `translateY(${y}px)`;
+    plain.style.opacity = showIcon ? '0' : '1';
+    icon.style.opacity = showIcon ? '1' : '0';
+  }
+  loginLoadingRaf = requestAnimationFrame(loginLoadingFrame);
+}
+
+function showLoginLoading() {
+  qs('loginLoadingOverlay').classList.remove('hidden');
+  loginLoadingStart = performance.now();
+  if (loginLoadingRaf) cancelAnimationFrame(loginLoadingRaf);
+  loginLoadingRaf = requestAnimationFrame(loginLoadingFrame);
+}
+
+function hideLoginLoading() {
+  qs('loginLoadingOverlay').classList.add('hidden');
+  if (loginLoadingRaf) {
+    cancelAnimationFrame(loginLoadingRaf);
+    loginLoadingRaf = null;
+  }
 }
 
 /* ---------------- 초기화 ---------------- */
@@ -161,11 +260,21 @@ function registerServiceWorker() {
 /* ---------------- 이벤트 바인딩 ---------------- */
 
 function bindEvents() {
+  // init()은 최초 로드 때뿐 아니라 로그인/로그아웃 성공 시에도 다시 호출되는데, 그때마다
+  // bindEvents()도 같이 불려서 예전에는 매 로그인마다 모든 이벤트 리스너가 중복으로
+  // 쌓였습니다(토글류는 두 번 실행돼도 서로 상쇄돼 눈에 안 띄었지만, 목록을 불러와
+  // 누적하는 곳들은 항목이 두 배로 쌓이는 실제 버그였습니다). 그래서 최초 한 번만
+  // 바인딩하도록 막습니다.
+  if (window.__eventsBound) return;
+  window.__eventsBound = true;
+
   qs('onboardSaveBtn').addEventListener('click', onOnboardSave);
   qs('adminLoginForm').addEventListener('submit', onAdminLoginSubmit);
   qs('setBackBtn').addEventListener('click', () => showScreen('screen-home'));
   qs('setSaveBtn').addEventListener('click', onSettingsSave);
-  qs('setLogoutBtn').addEventListener('click', onLogout);
+  qs('setLogoutBtn').addEventListener('click', () => onLogout());
+  qs('setAccountMgmtBtn').addEventListener('click', openAccountDevices);
+  qs('devicesBackBtn').addEventListener('click', () => showScreen('screen-settings'));
   qs('menuBtn').addEventListener('click', openDrawer);
   qs('drawerOverlay').addEventListener('click', closeDrawer);
   qs('drawerHome').addEventListener('click', () => { closeDrawer(); showScreen('screen-home'); loadHistory(); });
@@ -205,10 +314,12 @@ function bindEvents() {
   qs('recPlaceFilter').addEventListener('change', () => {
     recordsState.place = qs('recPlaceFilter').value;
     renderRecordsList();
+    if (calState) renderCalendarMonth();
   });
   qs('recDateFilter').addEventListener('change', () => {
     recordsState.date = qs('recDateFilter').value;
     renderRecordsList();
+    if (calState) renderCalendarMonth();
   });
   document.querySelectorAll('#screen-records .chip').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -216,8 +327,19 @@ function bindEvents() {
       btn.classList.add('active');
       recordsState.filter = btn.dataset.filter;
       renderRecordsList();
+      if (calState) renderCalendarMonth();
     });
   });
+
+  qs('calPrevBtn').addEventListener('click', () => {
+    calState.monthDate = new Date(calState.monthDate.getFullYear(), calState.monthDate.getMonth() - 1, 1);
+    renderCalendarMonth();
+  });
+  qs('calNextBtn').addEventListener('click', () => {
+    calState.monthDate = new Date(calState.monthDate.getFullYear(), calState.monthDate.getMonth() + 1, 1);
+    renderCalendarMonth();
+  });
+  qs('calLoadMoreBtn').addEventListener('click', () => loadCalendarBatch(false));
 }
 
 // 새로고침 아이콘을 클릭할 때마다 항상 화살표 방향(정방향)으로만 720도씩 더 돌립니다.
@@ -254,12 +376,17 @@ function onOnboardSave() {
   localStorage.setItem(LS.name, pendingGoogleUser.name);
   localStorage.setItem(LS.email, pendingGoogleUser.email);
   localStorage.setItem(LS.team, team);
+  registerDeviceRequest(pendingGoogleUser.email, getDeviceId(), getDeviceName());
   pendingGoogleUser = null;
   init();
 }
 
-function onLogout() {
-  if (!confirm('로그아웃하고 다른 Google 계정으로 로그인하시겠습니까?\n이 기기에 저장된 이름/직책 정보가 지워집니다.')) return;
+// skipConfirm: 계정관리 화면에서 "이 기기" 로그아웃을 누른 경우, 거기서 이미 확인을
+// 받았으므로 여기서 또 confirm 창을 띄우지 않기 위한 옵션입니다.
+function onLogout(skipConfirm) {
+  if (!skipConfirm && !confirm('로그아웃하고 다른 Google 계정으로 로그인하시겠습니까?\n이 기기에 저장된 이름/직책 정보가 지워집니다.')) return;
+  const user = getUser();
+  logoutDeviceRequest(user.email, getDeviceId()); // 서버 기록용(베스트에포트, 실패해도 로그아웃은 진행)
   localStorage.removeItem(LS.name);
   localStorage.removeItem(LS.email);
   localStorage.removeItem(LS.team);
@@ -325,6 +452,8 @@ async function handleGoogleCredential(response) {
     return;
   }
 
+  showLoginLoading();
+
   try {
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -334,6 +463,7 @@ async function handleGoogleCredential(response) {
     const data = await res.json();
 
     if (!data.ok) {
+      hideLoginLoading();
       statusEl.className = 'scan-status error';
       statusEl.textContent = data.error === 'domain_not_allowed'
         ? '학교 이메일(@ync.ac.kr) 계정으로만 로그인할 수 있습니다. 다른 계정으로 다시 시도해주세요.'
@@ -341,6 +471,7 @@ async function handleGoogleCredential(response) {
       return;
     }
 
+    hideLoginLoading();
     pendingGoogleUser = { name: data.name, email: data.email, position: data.position || '' };
     qs('onboardConfirmedName').textContent = data.name;
     qs('onboardConfirmedEmail').textContent = data.email;
@@ -359,6 +490,7 @@ async function handleGoogleCredential(response) {
       qs('onboardTeamSelect').value = '';
     }
   } catch (err) {
+    hideLoginLoading();
     statusEl.className = 'scan-status error';
     statusEl.textContent = '네트워크 오류로 로그인 확인에 실패했습니다. 다시 시도해주세요.';
   }
@@ -393,6 +525,7 @@ async function onAdminLoginSubmit(e) {
   btn.disabled = true;
   statusEl.className = 'scan-status';
   statusEl.textContent = '로그인 확인 중...';
+  showLoginLoading();
 
   try {
     const res = await fetch(endpoint, {
@@ -403,6 +536,7 @@ async function onAdminLoginSubmit(e) {
     const data = await res.json();
 
     if (!data.ok) {
+      hideLoginLoading();
       statusEl.className = 'scan-status error';
       statusEl.textContent = data.error === 'admin_not_configured'
         ? '관리자 계정이 아직 설정되지 않았습니다. 관리자에게 문의해주세요.'
@@ -411,13 +545,16 @@ async function onAdminLoginSubmit(e) {
       return;
     }
 
+    hideLoginLoading();
     // 관리자는 직책이 이미 정해져 있어(항상 "관리자") 직책 선택 단계 없이 바로 로그인 처리합니다.
     // 이메일이 없는 계정이라, 입력한 아이디를 식별자로 대신 저장합니다.
     localStorage.setItem(LS.name, data.name || '관리자');
     localStorage.setItem(LS.email, id);
     localStorage.setItem(LS.team, data.position || '');
+    registerDeviceRequest(id, getDeviceId(), getDeviceName());
     init();
   } catch (err) {
+    hideLoginLoading();
     statusEl.className = 'scan-status error';
     statusEl.textContent = '네트워크 오류로 로그인 확인에 실패했습니다. 다시 시도해주세요.';
     btn.disabled = false;
@@ -456,6 +593,110 @@ function onSettingsSave() {
   toast('저장되었습니다.');
   showScreen('screen-home');
   loadHistory();
+}
+
+/* ---------------- 계정관리: 이 계정에 연결된 기기 ----------------
+ * 하트비트(주기적 접속 확인) 없이, "로그인 기록은 있는데 그 뒤로 로그아웃 기록이 없는
+ * 기기 = 로그인 중"으로 판단합니다. 기기 목록은 서버(앱스 스크립트)의 기기세션 시트에서
+ * 가져오고, 다른 기기 로그아웃은 그 기기가 다음에 온라인 상태가 될 때 반영됩니다.
+ */
+
+function registerDeviceRequest(account, deviceId, deviceName) {
+  const endpoint = getEndpoint();
+  if (!endpoint || !account) return;
+  fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'registerDevice', account, deviceId, deviceName }),
+  }).catch(() => { /* 베스트에포트 — 실패해도 로그인 자체는 그대로 진행됩니다 */ });
+}
+
+async function logoutDeviceRequest(account, deviceId) {
+  const endpoint = getEndpoint();
+  if (!endpoint || !account) return false;
+  try {
+    await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'logoutDevice', account, deviceId }),
+    });
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+function openAccountDevices() {
+  showScreen('screen-account-devices');
+  loadDevices();
+}
+
+async function loadDevices() {
+  const listEl = qs('devicesList');
+  const endpoint = getEndpoint();
+  if (!endpoint) {
+    listEl.innerHTML = '<p class="muted small">설정에서 서버 저장 주소를 입력하면 기기 목록을 볼 수 있습니다.</p>';
+    return;
+  }
+
+  const account = getUser().email;
+  listEl.innerHTML = '<p class="muted small">불러오는 중...</p>';
+
+  try {
+    const url = endpoint + (endpoint.includes('?') ? '&' : '?') +
+      'action=listDevices&account=' + encodeURIComponent(account);
+    const res = await fetch(url);
+    const data = await res.json();
+    renderDevicesList((data && data.devices) || []);
+  } catch (err) {
+    listEl.innerHTML = '<p class="muted small">기기 목록을 불러오지 못했습니다. 네트워크를 확인해주세요.</p>';
+  }
+}
+
+function renderDevicesList(devices) {
+  const listEl = qs('devicesList');
+  listEl.innerHTML = '';
+
+  if (!devices.length) {
+    listEl.innerHTML = '<p class="muted small">연결된 기기 기록이 없습니다.</p>';
+    return;
+  }
+
+  const myDeviceId = getDeviceId();
+  devices.forEach((dev) => {
+    const isThis = dev.deviceId === myDeviceId;
+    const loginDate = dev.loginAt ? formatDateTime(new Date(dev.loginAt)) : '-';
+
+    const row = document.createElement('div');
+    row.className = 'device-item';
+    row.innerHTML = `
+      <div class="device-main">
+        <div class="device-name">${dev.deviceName || '알 수 없는 기기'}${isThis ? '<span class="badge-me">이 기기</span>' : ''}</div>
+        <div class="device-sub">로그인: ${loginDate}</div>
+      </div>
+      <button type="button" class="btn btn-ghost device-logout-btn">로그아웃</button>
+    `;
+    row.querySelector('.device-logout-btn').addEventListener('click', () => onDeviceLogoutClick(dev, isThis));
+    listEl.appendChild(row);
+  });
+}
+
+async function onDeviceLogoutClick(dev, isThis) {
+  const msg = isThis
+    ? '이 기기를 로그아웃하시겠습니까?'
+    : `"${dev.deviceName || '이 기기'}"를 로그아웃 처리하시겠습니까?\n다음에 그 기기가 인터넷에 연결될 때 반영됩니다.`;
+  if (!confirm(msg)) return;
+
+  if (isThis) {
+    // onLogout이 서버 기록(logoutDeviceRequest)까지 알아서 처리합니다.
+    onLogout(true);
+    return;
+  }
+
+  const account = getUser().email;
+  await logoutDeviceRequest(account, dev.deviceId);
+  toast('로그아웃 처리했습니다.');
+  loadDevices();
 }
 
 /* ---------------- NFC 스캔 ----------------
@@ -881,9 +1122,11 @@ function toggleHomeGroup(groupId, extraCount) {
  */
 
 let recordsState = { items: [], offset: 0, hasMore: true, filter: 'all', place: '', date: '' };
+let calState = null; // PC(달력형 전체기록)에서만 초기화됩니다. 모바일 폭에서는 null로 유지.
 
 function openRecords() {
   recordsState = { items: [], offset: 0, hasMore: true, filter: 'all', place: '', date: '' };
+  calState = null;
   qs('recPlaceFilter').innerHTML = '<option value="">장소 전체</option>';
   qs('recDateFilter').value = '';
   document.querySelectorAll('#screen-records .chip').forEach((c) => c.classList.toggle('active', c.dataset.filter === 'all'));
@@ -891,6 +1134,7 @@ function openRecords() {
   qs('recordsMoreBtn').classList.add('hidden');
   showScreen('screen-records');
   loadMoreRecords();
+  initCalendarIfNeeded();
 }
 
 async function loadMoreRecords() {
@@ -917,7 +1161,7 @@ async function loadMoreRecords() {
     recordsState.offset += newRecords.length;
     recordsState.hasMore = !!(data && data.hasMore) && newRecords.length > 0;
 
-    updatePlaceFilterOptions(recordsState.items);
+    refreshPlaceFilterOptions();
     renderRecordsList();
   } catch (err) {
     if (!alreadyHadItems) {
@@ -938,6 +1182,14 @@ function updatePlaceFilterOptions(items) {
   select.innerHTML = '<option value="">장소 전체</option>' +
     places.map((p) => `<option value="${p}">${p}</option>`).join('');
   select.value = places.includes(current) ? current : '';
+}
+
+// 모바일 리스트(recordsState.items)와 PC 달력(calState.records)이 서로 다른 배치로
+// 기록을 불러오다 보니, 장소 필터 옵션은 둘을 합쳐서 만들어야 어느 화면 폭에서든
+// 빠짐없이 나타납니다.
+function refreshPlaceFilterOptions() {
+  const merged = recordsState.items.concat(calState ? calState.records : []);
+  updatePlaceFilterOptions(merged);
 }
 
 function recordDateKey(r) {
@@ -988,6 +1240,176 @@ function renderRecordsList() {
   }
 
   qs('recordsMoreBtn').classList.toggle('hidden', !recordsState.hasMore);
+}
+
+/* ---------------- 전체 기록: 웹(PC) 전용 달력형 ----------------
+ * 모바일 리스트(recordsState)와는 별개로, 달력은 최근 기록을 최대 200건씩 통째로
+ * 받아와(action=list&limit=200) 클라이언트에서 날짜별로 묶어 보여줍니다. 더 오래된
+ * 달로 이동했는데 그 기록이 아직 안 불러와졌으면 "이전 기록 더 불러오기" 버튼으로
+ * 다음 200건을 이어서 받아옵니다. 장소/이상만/NFC 필터는 모바일 리스트와 같은
+ * recordsState를 그대로 공유해서 씁니다(recordMatchesFilters 재사용).
+ */
+function isPcRecordsView() {
+  return window.matchMedia('(min-width:860px)').matches;
+}
+
+function initCalendarIfNeeded() {
+  if (!isPcRecordsView()) return;
+  const today = new Date();
+  calState = {
+    records: [],
+    offset: 0,
+    hasMore: true,
+    monthDate: new Date(today.getFullYear(), today.getMonth(), 1),
+    selectedKey: dateKeyOf(today),
+  };
+  loadCalendarBatch(true);
+}
+
+async function loadCalendarBatch(isFirst) {
+  if (!calState) return;
+  const endpoint = getEndpoint();
+  const loadMoreBtn = qs('calLoadMoreBtn');
+
+  if (!endpoint) {
+    qs('calGrid').innerHTML = '<p class="muted small">설정에서 서버 저장 주소를 입력하면 기록을 볼 수 있습니다.</p>';
+    return;
+  }
+
+  loadMoreBtn.disabled = true;
+  loadMoreBtn.textContent = '불러오는 중...';
+
+  try {
+    const url = endpoint + (endpoint.includes('?') ? '&' : '?') +
+      'action=list&limit=200&offset=' + calState.offset;
+    const res = await fetch(url);
+    const data = await res.json();
+    const newRecords = (data && data.records) || [];
+
+    calState.records = calState.records.concat(newRecords);
+    calState.offset += newRecords.length;
+    calState.hasMore = !!(data && data.hasMore) && newRecords.length > 0;
+
+    refreshPlaceFilterOptions();
+    renderCalendarMonth();
+  } catch (err) {
+    if (isFirst) {
+      qs('calGrid').innerHTML = '<p class="muted small">기록을 불러오지 못했습니다. 네트워크를 확인해주세요.</p>';
+    } else {
+      toast('추가 기록을 불러오지 못했습니다.');
+    }
+  } finally {
+    loadMoreBtn.disabled = false;
+    loadMoreBtn.textContent = '이전 기록 더 불러오기';
+  }
+}
+
+function renderCalendarMonth() {
+  if (!calState) return;
+  const y = calState.monthDate.getFullYear();
+  const m = calState.monthDate.getMonth();
+  qs('calMonthLabel').textContent = `${y}년 ${m + 1}월`;
+
+  const filtered = calState.records.filter(recordMatchesFilters);
+  const byDate = {};
+  filtered.forEach((r) => {
+    const key = recordDateKey(r);
+    if (!key) return;
+    (byDate[key] = byDate[key] || []).push(r);
+  });
+
+  const firstOfMonth = new Date(y, m, 1);
+  const startWeekday = firstOfMonth.getDay(); // 0=일요일
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const prevDaysInMonth = new Date(y, m, 0).getDate();
+  const todayKey = dateKeyOf(new Date());
+
+  const grid = qs('calGrid');
+  grid.innerHTML = '';
+
+  // 이번 달 1일 앞의 빈칸은 지난 달 마지막 며칠로 채우되, 클릭은 안 되게 합니다.
+  for (let i = 0; i < startWeekday; i++) {
+    grid.appendChild(buildCalCell(prevDaysInMonth - startWeekday + 1 + i, null, true, [], false));
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = `${y}-${pad(m + 1)}-${pad(d)}`;
+    grid.appendChild(buildCalCell(d, key, false, byDate[key] || [], key === todayKey));
+  }
+
+  const totalCells = startWeekday + daysInMonth;
+  const trailing = (7 - (totalCells % 7)) % 7;
+  for (let i = 1; i <= trailing; i++) {
+    grid.appendChild(buildCalCell(i, null, true, [], false));
+  }
+
+  qs('calLoadMoreBtn').classList.toggle('hidden', !calState.hasMore);
+  renderDayDetail(calState.selectedKey, byDate[calState.selectedKey] || []);
+}
+
+function buildCalCell(dayNum, key, isMuted, records, isToday) {
+  const cell = document.createElement('div');
+  const hasAnomaly = records.some(recordHasAnomaly);
+  const isSelected = !isMuted && key === (calState && calState.selectedKey);
+  cell.className = 'cal-cell'
+    + (isMuted ? ' muted-cell empty' : (records.length ? '' : ' empty'))
+    + (isToday ? ' today' : '')
+    + (hasAnomaly ? ' has-anomaly' : '')
+    + (isSelected ? ' selected' : '');
+
+  const numEl = document.createElement('span');
+  numEl.className = 'd-num';
+  numEl.textContent = dayNum;
+  cell.appendChild(numEl);
+
+  if (hasAnomaly && !isMuted) {
+    const warn = document.createElement('span');
+    warn.className = 'warn';
+    warn.textContent = '⚠';
+    cell.appendChild(warn);
+  }
+
+  if (!isMuted && records.length) {
+    const countEl = document.createElement('span');
+    countEl.className = 'd-count';
+    countEl.textContent = records.length + '건';
+    cell.appendChild(countEl);
+  }
+
+  if (!isMuted) {
+    cell.addEventListener('click', () => {
+      calState.selectedKey = key;
+      renderCalendarMonth();
+    });
+  }
+  return cell;
+}
+
+function renderDayDetail(dateKey, records) {
+  const titleEl = qs('dayCardTitle');
+  const subEl = qs('dayCardSub');
+  const listEl = qs('dayCardList');
+  listEl.innerHTML = '';
+
+  if (!dateKey) {
+    titleEl.textContent = '날짜를 선택해주세요';
+    subEl.textContent = '';
+    return;
+  }
+
+  titleEl.textContent = formatDateLabel(dateKey);
+  const anomalyCount = records.filter(recordHasAnomaly).length;
+  subEl.textContent = `총 ${records.length}건 · 이상 ${anomalyCount}건`;
+
+  if (!records.length) {
+    listEl.innerHTML = '<p class="muted small">이 날짜에는 점검 기록이 없습니다.</p>';
+    return;
+  }
+
+  records
+    .slice()
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .forEach((r) => listEl.appendChild(buildRecordItem(r)));
 }
 
 function buildRecordItem(r) {
