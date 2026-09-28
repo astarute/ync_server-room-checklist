@@ -14,6 +14,10 @@ const LS = {
   pending: 'src_pending',
   historyCache: 'src_history_cache',
   deviceId: 'src_device_id',
+  isAdmin: 'src_is_admin',
+  // 로그아웃해도 지워지지 않는 "이 기기에서 예전에 등록했던 사람" 기록입니다. 한 번 등록한
+  // 이메일로 다시 로그인하면(같은 기기) 직책 확인 화면을 건너뛰는 데 씁니다.
+  knownUsers: 'src_known_users',
 };
 
 // 관리자용: 여기에 배포한 Apps Script 웹앱 주소를 미리 채워두면, 사용자가 설정에서
@@ -61,6 +65,21 @@ function getUser() {
     team: localStorage.getItem(LS.team) || '',
     email: localStorage.getItem(LS.email) || '',
   };
+}
+function isAdmin() {
+  return localStorage.getItem(LS.isAdmin) === '1';
+}
+
+/* 로그아웃해도 지워지지 않는 "알고 있는 사람" 기록. 한 번 등록한 이메일이면 다음에
+   같은 기기에서 로그아웃 후 다시 로그인해도 직책 확인 화면을 건너뛸 수 있게 해줍니다. */
+function getKnownUser(email) {
+  const map = loadJSON(LS.knownUsers, {});
+  return map[String(email || '').toLowerCase()] || null;
+}
+function saveKnownUser(email, name, position) {
+  const map = loadJSON(LS.knownUsers, {});
+  map[String(email || '').toLowerCase()] = { name: name || '', position: position || '' };
+  saveJSON(LS.knownUsers, map);
 }
 
 /* 계정관리(연결된 기기 목록)용: 이 기기를 구분할 고유 ID를 한 번 만들어 저장해두고
@@ -201,6 +220,9 @@ function init() {
   window.addEventListener('offline', updateOnlineDot);
 
   const user = getUser();
+  // 관리자 계정으로 로그인했을 때만 PC에서도 서버실/장비실 탭과 가입자 관리 탭이 보이도록
+  // body에 표시를 남겨둡니다(CSS에서 body.is-admin 기준으로 노출 여부를 결정합니다).
+  document.body.classList.toggle('is-admin', !!(user.name && user.email) && isAdmin());
   if (!user.name || !user.email) {
     // 로그인 전에는 메뉴/설정 버튼을 감추고(모바일), PC의 고정 사이드바도 감춰서
     // (body.logged-out + CSS) 구글 로그인을 건너뛰고 다른 화면으로 갈 방법을 없앱니다.
@@ -215,7 +237,8 @@ function init() {
     document.body.classList.remove('logged-out');
     qs('menuBtn').classList.remove('hidden');
     showScreen('screen-home');
-    qs('homeUserAvatar').textContent = (user.name || '?').charAt(0);
+    // 이름 첫 글자 대신, 카카오톡 기본 프로필 느낌의 사람 실루엣 아이콘을 보여줍니다.
+    qs('homeUserAvatar').innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="4"/><path d="M12 13.5c-5 0-8 2.7-8 6.5v1h16v-1c0-3.8-3-6.5-8-6.5z"/></svg>';
     qs('homeUserName').textContent = user.name + (user.team ? ` · ${user.team}` : '');
     startClock();
     loadHistory();
@@ -274,7 +297,6 @@ function bindEvents() {
   qs('setSaveBtn').addEventListener('click', onSettingsSave);
   qs('setLogoutBtn').addEventListener('click', () => onLogout());
   qs('setAccountMgmtBtn').addEventListener('click', openAccountDevices);
-  qs('devicesBackBtn').addEventListener('click', () => showScreen('screen-settings'));
   qs('menuBtn').addEventListener('click', openDrawer);
   qs('drawerOverlay').addEventListener('click', closeDrawer);
   qs('drawerHome').addEventListener('click', () => { closeDrawer(); showScreen('screen-home'); loadHistory(); });
@@ -282,7 +304,12 @@ function bindEvents() {
   qs('drawerEquipRoom').addEventListener('click', () => { closeDrawer(); showScreen('screen-equipment'); });
   qs('drawerRecords').addEventListener('click', () => { closeDrawer(); openRecords(); });
   qs('drawerSettings').addEventListener('click', () => { closeDrawer(); openSettings(); });
+  qs('drawerUserMgmt').addEventListener('click', () => { closeDrawer(); openUserManagement(); });
   qs('drawerRoomsToggle').addEventListener('click', toggleRoomsSubmenu);
+  // 사이드바 메뉴 항목 클릭 시 중앙에서 원이 퍼지는 리플 효과
+  document.querySelectorAll('.drawer-item').forEach((btn) => {
+    btn.addEventListener('click', () => rippleEffect(btn));
+  });
   document.querySelectorAll('.drawer-subitem').forEach((btn) => {
     btn.addEventListener('click', () => {
       const room = btn.dataset.room;
@@ -342,6 +369,34 @@ function bindEvents() {
   qs('calLoadMoreBtn').addEventListener('click', () => loadCalendarBatch(false));
 }
 
+// 사이드바 메뉴 항목을 누르면 클릭한 항목의 정중앙에서 진짜 원(도형) 하나가 커지면서
+// 퍼지고, 다 퍼진 직후 잠깐 테두리가 나타났다가 사라지는 클릭 피드백 효과입니다.
+// (clip-path 방식은 가로로 긴 박스에서 원이 찌그러져 보여서, 실제 원형 div를 키우는
+// 방식으로 만들었습니다.)
+function rippleEffect(el) {
+  const old = el.querySelector('.ripple-el');
+  if (old) old.remove();
+
+  const ripple = document.createElement('div');
+  ripple.className = 'ripple-el';
+  el.appendChild(ripple);
+
+  const rect = el.getBoundingClientRect();
+  const size = Math.sqrt(rect.width * rect.width + rect.height * rect.height) * 1.15;
+
+  requestAnimationFrame(() => {
+    ripple.style.width = size + 'px';
+    ripple.style.height = size + 'px';
+  });
+
+  el.classList.add('ripple-active');
+  setTimeout(() => { ripple.style.opacity = '0'; }, 1150);
+  setTimeout(() => {
+    el.classList.remove('ripple-active');
+    ripple.remove();
+  }, 1350);
+}
+
 // 새로고침 아이콘을 클릭할 때마다 항상 화살표 방향(정방향)으로만 720도씩 더 돌립니다.
 // 값을 절대 줄이지 않고 누적만 시키기 때문에 역방향으로 튀는 일이 없고, 회전이 끝날
 // 때까지는 버튼을 잠가서 연타해도 애니메이션이 꼬이지 않게 합니다.
@@ -373,10 +428,12 @@ function onOnboardSave() {
     }
   }
 
+  localStorage.removeItem(LS.isAdmin);
   localStorage.setItem(LS.name, pendingGoogleUser.name);
   localStorage.setItem(LS.email, pendingGoogleUser.email);
   localStorage.setItem(LS.team, team);
-  registerDeviceRequest(pendingGoogleUser.email, getDeviceId(), getDeviceName());
+  saveKnownUser(pendingGoogleUser.email, pendingGoogleUser.name, team);
+  registerDeviceRequest(pendingGoogleUser.email, getDeviceId(), getDeviceName(), pendingGoogleUser.name, team);
   pendingGoogleUser = null;
   init();
 }
@@ -390,6 +447,9 @@ function onLogout(skipConfirm) {
   localStorage.removeItem(LS.name);
   localStorage.removeItem(LS.email);
   localStorage.removeItem(LS.team);
+  localStorage.removeItem(LS.isAdmin);
+  // LS.knownUsers(이 기기에서 예전에 등록했던 사람 기록)는 일부러 지우지 않습니다 —
+  // 같은 이메일로 다시 로그인할 때 직책 확인 화면을 건너뛰기 위해 남겨둡니다.
   if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
     try { google.accounts.id.disableAutoSelect(); } catch (e) { /* ignore */ }
   }
@@ -467,11 +527,29 @@ async function handleGoogleCredential(response) {
       statusEl.className = 'scan-status error';
       statusEl.textContent = data.error === 'domain_not_allowed'
         ? '학교 이메일(@ync.ac.kr) 계정으로만 로그인할 수 있습니다. 다른 계정으로 다시 시도해주세요.'
-        : '로그인 확인에 실패했습니다. 다시 시도해주세요.';
+        : data.error === 'blocked'
+          ? '이 계정은 관리자에 의해 로그인이 제한되었습니다. 관리자에게 문의해주세요.'
+          : '로그인 확인에 실패했습니다. 다시 시도해주세요.';
       return;
     }
 
     hideLoginLoading();
+
+    // 이 기기에서 예전에 이미 등록했던(직책까지 입력했던) 이메일이면, 직책 확인 화면을
+    // 다시 보여줄 필요 없이 바로 로그인을 완료합니다.
+    const known = getKnownUser(data.email);
+    if (known) {
+      const position = known.position || data.position || '';
+      localStorage.removeItem(LS.isAdmin);
+      localStorage.setItem(LS.name, data.name);
+      localStorage.setItem(LS.email, data.email);
+      localStorage.setItem(LS.team, position);
+      saveKnownUser(data.email, data.name, position);
+      registerDeviceRequest(data.email, getDeviceId(), getDeviceName(), data.name, position);
+      init();
+      return;
+    }
+
     pendingGoogleUser = { name: data.name, email: data.email, position: data.position || '' };
     qs('onboardConfirmedName').textContent = data.name;
     qs('onboardConfirmedEmail').textContent = data.email;
@@ -551,7 +629,8 @@ async function onAdminLoginSubmit(e) {
     localStorage.setItem(LS.name, data.name || '관리자');
     localStorage.setItem(LS.email, id);
     localStorage.setItem(LS.team, data.position || '');
-    registerDeviceRequest(id, getDeviceId(), getDeviceName());
+    localStorage.setItem(LS.isAdmin, '1');
+    registerDeviceRequest(id, getDeviceId(), getDeviceName(), data.name || '관리자', data.position || '');
     init();
   } catch (err) {
     hideLoginLoading();
@@ -601,13 +680,13 @@ function onSettingsSave() {
  * 가져오고, 다른 기기 로그아웃은 그 기기가 다음에 온라인 상태가 될 때 반영됩니다.
  */
 
-function registerDeviceRequest(account, deviceId, deviceName) {
+function registerDeviceRequest(account, deviceId, deviceName, name, position) {
   const endpoint = getEndpoint();
   if (!endpoint || !account) return;
   fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'registerDevice', account, deviceId, deviceName }),
+    body: JSON.stringify({ action: 'registerDevice', account, deviceId, deviceName, name, position }),
   }).catch(() => { /* 베스트에포트 — 실패해도 로그인 자체는 그대로 진행됩니다 */ });
 }
 
@@ -697,6 +776,109 @@ async function onDeviceLogoutClick(dev, isThis) {
   await logoutDeviceRequest(account, dev.deviceId);
   toast('로그아웃 처리했습니다.');
   loadDevices();
+}
+
+/* ---------------- 가입자 관리 (관리자 전용) ----------------
+ * 구글 계정으로 로그인한 사람 전체 명단을 보여주고, 특정 계정을 삭제하거나 차단할 수 있게
+ * 합니다. 차단하면 다음 로그인 시도부터 서버(verifyGoogleIdToken)에서 거부됩니다.
+ */
+
+function openUserManagement() {
+  showScreen('screen-user-management');
+  loadUsers();
+}
+
+async function loadUsers() {
+  const listEl = qs('usersList');
+  const endpoint = getEndpoint();
+  if (!endpoint) {
+    listEl.innerHTML = '<p class="muted small">설정에서 서버 저장 주소를 입력하면 가입자 목록을 볼 수 있습니다.</p>';
+    return;
+  }
+
+  listEl.innerHTML = '<p class="muted small">불러오는 중...</p>';
+
+  try {
+    const url = endpoint + (endpoint.includes('?') ? '&' : '?') + 'action=listUsers';
+    const res = await fetch(url);
+    const data = await res.json();
+    renderUsersList((data && data.users) || []);
+  } catch (err) {
+    listEl.innerHTML = '<p class="muted small">가입자 목록을 불러오지 못했습니다. 네트워크를 확인해주세요.</p>';
+  }
+}
+
+function renderUsersList(users) {
+  const listEl = qs('usersList');
+  listEl.innerHTML = '';
+
+  if (!users.length) {
+    listEl.innerHTML = '<p class="muted small">아직 구글로 가입한 사용자가 없습니다.</p>';
+    return;
+  }
+
+  users.forEach((u) => {
+    const joined = u.joinedAt ? formatDateTime(new Date(u.joinedAt)) : '-';
+    const lastLogin = u.lastLoginAt ? formatDateTime(new Date(u.lastLoginAt)) : '-';
+    const isBlocked = u.status === 'blocked';
+
+    const row = document.createElement('div');
+    row.className = 'user-item';
+    row.innerHTML = `
+      <div class="user-main">
+        <div class="user-name">${u.name || '(이름 없음)'} <span class="user-email">${u.email}</span>${isBlocked ? '<span class="badge-blocked">차단됨</span>' : ''}</div>
+        <div class="user-sub">직책: ${u.position || '-'} · 가입일: ${joined} · 최근 로그인: ${lastLogin}</div>
+      </div>
+      <div class="user-actions">
+        <button type="button" class="btn btn-ghost user-block-btn">${isBlocked ? '차단 해제' : '차단'}</button>
+        <button type="button" class="btn btn-ghost user-delete-btn">삭제</button>
+      </div>
+    `;
+    row.querySelector('.user-block-btn').addEventListener('click', () => onUserBlockClick(u, isBlocked));
+    row.querySelector('.user-delete-btn').addEventListener('click', () => onUserDeleteClick(u));
+    listEl.appendChild(row);
+  });
+}
+
+async function onUserBlockClick(u, isBlocked) {
+  const msg = isBlocked
+    ? `"${u.name || u.email}" 계정의 차단을 해제하시겠습니까?`
+    : `"${u.name || u.email}" 계정을 차단하시겠습니까?\n다음 로그인 시도부터 거부됩니다.`;
+  if (!confirm(msg)) return;
+
+  const endpoint = getEndpoint();
+  if (!endpoint) return;
+
+  try {
+    await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'setUserStatus', email: u.email, blocked: !isBlocked }),
+    });
+    toast(isBlocked ? '차단을 해제했습니다.' : '차단 처리했습니다.');
+    loadUsers();
+  } catch (err) {
+    toast('처리 중 오류가 발생했습니다.');
+  }
+}
+
+async function onUserDeleteClick(u) {
+  if (!confirm(`"${u.name || u.email}" 계정을 가입자 목록에서 삭제하시겠습니까?\n이미 제출된 점검 기록은 삭제되지 않습니다.`)) return;
+
+  const endpoint = getEndpoint();
+  if (!endpoint) return;
+
+  try {
+    await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'deleteUser', email: u.email }),
+    });
+    toast('삭제했습니다.');
+    loadUsers();
+  } catch (err) {
+    toast('처리 중 오류가 발생했습니다.');
+  }
 }
 
 /* ---------------- NFC 스캔 ----------------

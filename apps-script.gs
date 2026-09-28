@@ -47,6 +47,11 @@ const STAFF_SHEET_NAME = '직원명단';
 // D열=로그인시각, E열=로그아웃시각(비어있으면 아직 로그인 중).
 const DEVICE_SHEET_NAME = '기기세션';
 
+// 가입자 관리(관리자 전용)용 시트: 구글로 로그인한 사람 전체 명단입니다. 로그인/재로그인할
+// 때마다 registerDevice 호출에 이름/직책을 함께 실어 보내 여기 upsert합니다.
+// A열=이메일, B열=이름, C열=직책, D열=최초가입일, E열=최근로그인, F열=상태(active/blocked).
+const USER_SHEET_NAME = '가입자';
+
 const HEADERS = [
   '제출시각', '점검시각', '이름', '소속', '태그ID', '위치', '확인방법',
   '위도', '경도', '온도(C)', '습도(%)',
@@ -54,7 +59,7 @@ const HEADERS = [
   '메모', '사진링크', 'ClientID', '이메일',
 ];
 
-function getSheet_() {
+function getSheet() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   let sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
@@ -67,14 +72,14 @@ function getSheet_() {
   return sheet;
 }
 
-function checkAuth_(payload) {
+function checkAuth(payload) {
   if (!SHARED_SECRET) return true;
   return payload && payload.secret === SHARED_SECRET;
 }
 
 // Google이 발급한 ID 토큰(idToken)을 구글 서버에 직접 물어봐서 진짜인지, 학교 이메일이
 // 맞는지 확인합니다. 여기서 통과된 이메일/이름만 신뢰할 수 있는 값으로 취급합니다.
-function verifyGoogleIdToken_(idToken) {
+function verifyGoogleIdToken(idToken) {
   if (!idToken) return { ok: false, error: 'missing_token' };
 
   let data;
@@ -107,18 +112,23 @@ function verifyGoogleIdToken_(idToken) {
   }
 
   const name = data.name || email.split('@')[0];
+
+  if (isUserBlocked(email)) {
+    return { ok: false, error: 'blocked' };
+  }
+
   return {
     ok: true,
     email: data.email,
     name: name,
-    position: getStaffPosition_(data.email, name),
+    position: getStaffPosition(data.email, name),
   };
 }
 
 // 직원명단 시트에서 직책을 찾아 돌려줍니다. 못 찾으면 빈 문자열.
 // 1순위: 이메일이 적혀있는 행 중에서 이메일이 정확히 일치하는 사람 (가장 정확함)
 // 2순위: 이메일 칸이 비어있는 행 중에서 이름이 정확히 일치하는 사람 (이메일 아직 안 채운 경우 대비)
-function getStaffPosition_(email, name) {
+function getStaffPosition(email, name) {
   try {
     const ss = SpreadsheetApp.openById(SHEET_ID);
     const sheet = ss.getSheetByName(STAFF_SHEET_NAME);
@@ -154,7 +164,7 @@ function getStaffPosition_(email, name) {
 }
 
 // 관리자 아이디/비밀번호가 맞는지 확인합니다. 위의 ADMIN_ID/ADMIN_PW와 정확히 일치해야 통과됩니다.
-function verifyAdminLogin_(id, pw) {
+function verifyAdminLogin(id, pw) {
   const inputId = String(id || '').trim();
   const inputPw = String(pw || '');
   if (!inputId || !inputPw) return { ok: false, error: 'missing_credentials' };
@@ -167,7 +177,7 @@ function verifyAdminLogin_(id, pw) {
   return { ok: true, email: '', name: '관리자', position: '' };
 }
 
-function getDeviceSheet_() {
+function getDeviceSheet() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   let sheet = ss.getSheetByName(DEVICE_SHEET_NAME);
   if (!sheet) {
@@ -179,18 +189,23 @@ function getDeviceSheet_() {
 }
 
 // 로그인할 때마다 새 줄을 하나 추가합니다(그 기기의 새 "세션"). 로그아웃 시각은 비워둡니다.
-function registerDevice_(account, deviceId, deviceName) {
+// account가 이메일 형태(구글 로그인)이면 가입자 시트도 함께 최신화합니다(관리자 계정처럼
+// 이메일이 아닌 경우는 가입자 명단에 넣지 않습니다).
+function registerDevice(account, deviceId, deviceName, name, position) {
   if (!account || !deviceId) return { ok: false, error: 'missing_params' };
-  const sheet = getDeviceSheet_();
+  const sheet = getDeviceSheet();
   sheet.appendRow([account, deviceId, deviceName || '', new Date(), '']);
+  if (String(account).indexOf('@') !== -1) {
+    upsertUser(account, name, position);
+  }
   return { ok: true };
 }
 
 // 그 계정의 기기들 중, 로그아웃 기록이 아직 없는(=로그인 중인) 기기만 돌려줍니다.
 // 같은 기기가 여러 번 로그인했을 수 있어, 기기ID별로 가장 최근 로그인 줄만 봅니다.
-function listDevices_(account) {
+function listDevices(account) {
   if (!account) return { ok: false, error: 'missing_account' };
-  const sheet = getDeviceSheet_();
+  const sheet = getDeviceSheet();
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return { ok: true, devices: [] };
 
@@ -216,9 +231,9 @@ function listDevices_(account) {
 }
 
 // 그 계정+기기ID의 "아직 로그아웃 안 된" 줄 중 가장 최근 것에 로그아웃 시각을 채웁니다.
-function logoutDevice_(account, deviceId) {
+function logoutDevice(account, deviceId) {
   if (!account || !deviceId) return { ok: false, error: 'missing_params' };
-  const sheet = getDeviceSheet_();
+  const sheet = getDeviceSheet();
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return { ok: true };
 
@@ -242,12 +257,116 @@ function logoutDevice_(account, deviceId) {
   return { ok: true };
 }
 
-function jsonOut_(obj) {
+/* ---------------- 가입자 관리(관리자 전용) ----------------
+ * 구글로 로그인한 사람 전체 명단을 별도 시트에 관리합니다. 로그인/재로그인마다 upsertUser로
+ * 최신화되고, 관리자는 이 명단을 보면서 특정 계정을 삭제하거나 차단할 수 있습니다.
+ * 차단된 계정은 다음 로그인 시도부터 verifyGoogleIdToken에서 거부됩니다.
+ */
+
+function getUserSheet() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sheet = ss.getSheetByName(USER_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(USER_SHEET_NAME);
+    sheet.appendRow(['이메일', '이름', '직책', '최초가입일', '최근로그인', '상태']);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+// 이미 있는 이메일이면 이름/직책/최근로그인만 갱신(가입일·상태는 그대로 유지)하고,
+// 처음 보는 이메일이면 새 줄을 추가합니다.
+function upsertUser(email, name, position) {
+  if (!email) return;
+  const sheet = getUserSheet();
+  const lastRow = sheet.getLastRow();
+  const now = new Date();
+
+  if (lastRow >= 2) {
+    const values = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+    for (let i = 0; i < values.length; i++) {
+      if (String(values[i][0]).toLowerCase() === String(email).toLowerCase()) {
+        const row = i + 2;
+        sheet.getRange(row, 2).setValue(name || values[i][1]);
+        sheet.getRange(row, 3).setValue(position || values[i][2]);
+        sheet.getRange(row, 5).setValue(now);
+        return;
+      }
+    }
+  }
+  sheet.appendRow([email, name || '', position || '', now, now, 'active']);
+}
+
+// 그 이메일이 현재 차단 상태인지 확인합니다.
+function isUserBlocked(email) {
+  if (!email) return false;
+  const sheet = getUserSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return false;
+  const values = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0]).toLowerCase() === String(email).toLowerCase()) {
+      return String(values[i][5]) === 'blocked';
+    }
+  }
+  return false;
+}
+
+// 가입자 관리 화면에서 전체 목록을 봅니다.
+function listUsers() {
+  const sheet = getUserSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { ok: true, users: [] };
+  const values = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  const users = values.map((row) => ({
+    email: String(row[0] || ''),
+    name: String(row[1] || ''),
+    position: String(row[2] || ''),
+    joinedAt: row[3] || '',
+    lastLoginAt: row[4] || '',
+    status: String(row[5] || 'active'),
+  })).sort((a, b) => new Date(b.lastLoginAt) - new Date(a.lastLoginAt));
+  return { ok: true, users: users };
+}
+
+// 가입자 목록에서 특정 계정을 삭제합니다(명단에서만 제거 — 이미 제출된 점검 기록은 그대로 남습니다).
+function deleteUser(email) {
+  if (!email) return { ok: false, error: 'missing_email' };
+  const sheet = getUserSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { ok: true };
+  const values = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0]).toLowerCase() === String(email).toLowerCase()) {
+      sheet.deleteRow(i + 2);
+      return { ok: true };
+    }
+  }
+  return { ok: true };
+}
+
+// 가입자를 차단하거나 차단 해제합니다.
+function setUserStatus(email, blocked) {
+  if (!email) return { ok: false, error: 'missing_email' };
+  const sheet = getUserSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { ok: false, error: 'not_found' };
+  const values = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0]).toLowerCase() === String(email).toLowerCase()) {
+      sheet.getRange(i + 2, 6).setValue(blocked ? 'blocked' : 'active');
+      return { ok: true };
+    }
+  }
+  return { ok: false, error: 'not_found' };
+}
+
+function jsonOut(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function savePhoto_(base64DataUrl, fileNameHint) {
+function savePhoto(base64DataUrl, fileNameHint) {
   if (!base64DataUrl) return '';
   try {
     const match = base64DataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/);
@@ -272,31 +391,39 @@ function doPost(e) {
     const body = JSON.parse(e.postData.contents);
 
     if (body.action === 'login') {
-      return jsonOut_(verifyGoogleIdToken_(body.idToken));
+      return jsonOut(verifyGoogleIdToken(body.idToken));
     }
 
     if (body.action === 'adminLogin') {
-      return jsonOut_(verifyAdminLogin_(body.id, body.pw));
+      return jsonOut(verifyAdminLogin(body.id, body.pw));
     }
 
     if (body.action === 'registerDevice') {
-      return jsonOut_(registerDevice_(body.account, body.deviceId, body.deviceName));
+      return jsonOut(registerDevice(body.account, body.deviceId, body.deviceName, body.name, body.position));
     }
 
     if (body.action === 'logoutDevice') {
-      return jsonOut_(logoutDevice_(body.account, body.deviceId));
+      return jsonOut(logoutDevice(body.account, body.deviceId));
+    }
+
+    if (body.action === 'deleteUser') {
+      return jsonOut(deleteUser(body.email));
+    }
+
+    if (body.action === 'setUserStatus') {
+      return jsonOut(setUserStatus(body.email, !!body.blocked));
     }
 
     if (body.action !== 'submit' || !body.record) {
-      return jsonOut_({ ok: false, error: 'invalid_action' });
+      return jsonOut({ ok: false, error: 'invalid_action' });
     }
-    if (!checkAuth_(body)) {
-      return jsonOut_({ ok: false, error: 'unauthorized' });
+    if (!checkAuth(body)) {
+      return jsonOut({ ok: false, error: 'unauthorized' });
     }
 
     const r = body.record;
-    const sheet = getSheet_();
-    const photoUrl = savePhoto_(r.photoBase64, r.photoName);
+    const sheet = getSheet();
+    const photoUrl = savePhoto(r.photoBase64, r.photoName);
 
     sheet.appendRow([
       new Date(),
@@ -321,9 +448,9 @@ function doPost(e) {
       r.userEmail || '',
     ]);
 
-    return jsonOut_({ ok: true });
+    return jsonOut({ ok: true });
   } catch (err) {
-    return jsonOut_({ ok: false, error: String(err) });
+    return jsonOut({ ok: false, error: String(err) });
   }
 }
 
@@ -332,20 +459,20 @@ function doGet(e) {
   const action = params.action || 'list';
 
   if (SHARED_SECRET && params.secret !== SHARED_SECRET) {
-    return jsonOut_({ ok: false, error: 'unauthorized' });
+    return jsonOut({ ok: false, error: 'unauthorized' });
   }
 
   if (action === 'list') {
     const limit = Math.min(parseInt(params.limit, 10) || 15, 200);
     const offset = Math.max(parseInt(params.offset, 10) || 0, 0);
-    const sheet = getSheet_();
+    const sheet = getSheet();
     const lastRow = sheet.getLastRow();
-    if (lastRow < 2) return jsonOut_({ ok: true, records: [], hasMore: false });
+    if (lastRow < 2) return jsonOut({ ok: true, records: [], hasMore: false });
 
     // offset은 "이미 불러온 최신순 기록 개수"입니다. 시트는 오래된 순으로 쌓이므로
     // 맨 아래(최신)에서 offset만큼 건너뛴 지점을 이번 페이지의 끝으로 봅니다.
     const endRow = lastRow - offset;
-    if (endRow < 2) return jsonOut_({ ok: true, records: [], hasMore: false });
+    if (endRow < 2) return jsonOut({ ok: true, records: [], hasMore: false });
 
     const startRow = Math.max(2, endRow - limit + 1);
     const numRows = endRow - startRow + 1;
@@ -377,12 +504,16 @@ function doGet(e) {
       userEmail: row[19],
     })).reverse(); // 최신순
 
-    return jsonOut_({ ok: true, records, hasMore });
+    return jsonOut({ ok: true, records, hasMore });
   }
 
   if (action === 'listDevices') {
-    return jsonOut_(listDevices_(params.account));
+    return jsonOut(listDevices(params.account));
   }
 
-  return jsonOut_({ ok: false, error: 'unknown_action' });
+  if (action === 'listUsers') {
+    return jsonOut(listUsers());
+  }
+
+  return jsonOut({ ok: false, error: 'unknown_action' });
 }

@@ -127,18 +127,41 @@ html,body{
   margin-top:2px;
 }
 .drawer-item{
+  position:relative;
+  overflow:hidden;
   display:block;
   width:100%;
   text-align:left;
   background:none;
-  border:none;
+  border:2px solid transparent;
   padding:14px 18px;
   font-size:15px;
   color:var(--text);
   cursor:pointer;
+  transition:border-color .18s ease-out;
 }
 .drawer-item:active{
   background:#f1f5f9;
+}
+/* 클릭 시 중앙에서 진짜 원(도형)이 커지는 리플 효과. 원은 z-index:-1이라
+   버튼 배경 위·글자 아래에서 퍼져서, 글자를 따로 감싸지 않아도 항상 잘 보입니다. */
+.drawer-item.ripple-active{
+  border-color:#101418;
+  transition-delay:.85s;
+}
+.ripple-el{
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:0;
+  height:0;
+  border-radius:50%;
+  background:#f1f5f9;
+  transform:translate(-50%,-50%);
+  transition:width 1s cubic-bezier(0.22,0.61,0.36,1), height 1s cubic-bezier(0.22,0.61,0.36,1), opacity .2s ease-out;
+  opacity:1;
+  pointer-events:none;
+  z-index:-1;
 }
 .drawer-parent{
   display:flex;
@@ -412,7 +435,7 @@ fieldset.field legend{
   width:30px;
   height:30px;
   border-radius:50%;
-  background:var(--primary);
+  background:#dfe3e8;
   color:#fff;
   display:flex;
   align-items:center;
@@ -420,6 +443,13 @@ fieldset.field legend{
   font-size:13px;
   font-weight:700;
   flex-shrink:0;
+  overflow:hidden;
+}
+/* 카카오톡 기본 프로필 느낌의 사람 실루엣 아이콘 */
+.mini-user-avatar svg{
+  width:19px;
+  height:19px;
+  fill:#9aa2b1;
 }
 .mini-user-name{font-size:13.5px;font-weight:700;color:var(--text);line-height:1.2;}
 .mini-user-sub{font-size:11px;color:var(--muted);line-height:1.2;}
@@ -514,6 +544,39 @@ fieldset.field legend{
   padding:2px 8px;
 }
 .device-logout-btn{width:auto;flex-shrink:0;margin-top:0;padding:8px 14px;font-size:13px;}
+
+/* 가입자 관리 (관리자 전용) */
+.user-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:14px 16px;
+  margin-bottom:10px;
+}
+.user-name{font-size:14px;font-weight:700;color:var(--text);}
+.user-email{font-size:12px;font-weight:500;color:var(--muted);margin-left:6px;}
+.user-sub{font-size:12px;color:var(--muted);margin-top:3px;}
+.badge-blocked{
+  display:inline-block;
+  margin-left:6px;
+  font-size:10.5px;
+  font-weight:700;
+  background:#fde2e2;
+  color:#b3261e;
+  border-radius:999px;
+  padding:2px 8px;
+}
+.user-actions{display:flex;gap:8px;flex-shrink:0;}
+.user-actions .btn{width:auto;margin-top:0;padding:8px 14px;font-size:13px;}
+
+/* 관리자 계정으로 로그인했을 때만 보이는 메뉴 (기본은 숨김) */
+#drawerUserMgmt{display:none;}
+body.is-admin #drawerUserMgmt{display:block;}
 
 /* 전체 기록 화면: 모바일 기본은 기존 리스트, PC(아래 미디어쿼리)는 달력형으로 바꿔치기 */
 #recordsCalendarWrap{display:none;}
@@ -798,10 +861,11 @@ fieldset.field legend{
   .mobile-history{display:none;}
   .records-card{display:block;}
 
-  /* 웹(PC)에서는 온도체크 관련 탭(서버실/장비실)도 숨기고 홈·기록·설정만 남깁니다.
-     점검 제출은 모바일에서만 하도록 설계되었습니다. */
-  #drawerServerRoom,
-  #drawerEquipRoom{display:none;}
+  /* 웹(PC)에서는 온도체크 관련 탭(서버실/장비실)을 기본적으로 숨깁니다(점검 제출은
+     모바일에서만 하도록 설계). 다만 관리자 계정으로 로그인한 경우에는 PC에서도
+     확인할 수 있도록 예외를 둡니다. */
+  body:not(.is-admin) #drawerServerRoom,
+  body:not(.is-admin) #drawerEquipRoom{display:none;}
 
   /* 전체 기록 화면: PC에서는 리스트 대신 달력형을 보여줍니다.
      날짜는 달력에서 직접 고르므로 날짜 필터 입력칸은 숨깁니다. */

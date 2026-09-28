@@ -45,6 +45,7 @@
   <button type="button" class="drawer-item" id="drawerEquipRoom">장비실</button>
   <button type="button" class="drawer-item" id="drawerRecords">기록</button>
   <button type="button" class="drawer-item" id="drawerSettings">설정</button>
+  <button type="button" class="drawer-item" id="drawerUserMgmt">가입자관리</button>
 </nav>
 
 <main id="app">
@@ -323,11 +324,19 @@
     <div class="card">
       <div class="section-header">
         <h1>이 계정에 연결된 기기</h1>
-        <button id="devicesBackBtn" class="icon-btn" aria-label="닫기">✕</button>
       </div>
       <p class="muted small">현재 로그인 상태로 기록된 기기 목록입니다. 다른 기기를 로그아웃 처리하면, 그 기기가 다음에 인터넷에 연결될 때 반영됩니다.</p>
     </div>
     <div id="devicesList"><p class="muted small">불러오는 중...</p></div>
+  </section>
+
+  <!-- 가입자 관리 (관리자 전용): 구글 계정으로 가입한 전체 사용자 목록 -->
+  <section id="screen-user-management" class="screen hidden">
+    <div class="card">
+      <h1>가입자 관리</h1>
+      <p class="muted small">구글 계정으로 로그인한 전체 사용자 목록입니다. 차단하면 다음 로그인 시도부터 거부됩니다.</p>
+    </div>
+    <div id="usersList"><p class="muted small">불러오는 중...</p></div>
   </section>
 
 </main>
