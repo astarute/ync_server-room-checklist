@@ -663,96 +663,53 @@ body.is-admin #drawerUserMgmt{display:block;}
 }
 .record-item.hidden-extra{display:none;}
 
-/* 모바일 전용: "최근 점검 기록" — 상자 밖에 제목/새로고침, 그 아래 날짜별로
-   독립된 버튼(카드)들이 나열되고 누르면 그 아래로 기록이 펼쳐집니다.
-   기본(모바일 폭)에서는 이쪽을 보여주고, PC 폭(아래 미디어쿼리)에서는
-   .records-card(기존 그리드+더보기 방식)로 바꿔 보여줍니다. */
-.mobile-history{display:block;}
-.records-card{display:none;}
-
-.section-header-plain{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  margin:4px 4px 12px;
+/* 실시간 온습도 카드(홈 화면, "최근 점검 기록" 대신 표시) — 아이콘 + 숫자만 있는
+   미니멀 트윈 카드(A안). 온도는 TEMP_WARN_C(app.js) 이상이면 badge가 ok→danger로,
+   습도는 30~60% 범위를 벗어나면 info→danger로 바뀝니다. */
+.metric-card-wrap{padding:18px 16px;}
+.metric-twin{display:flex;gap:10px;}
+.metric-meta{
+  margin:12px 0 0;
+  text-align:center;
+  font-size:12px;
+  color:var(--muted);
 }
-.section-header-plain h2{margin:0;}
-.section-header-plain .icon-btn{color:var(--primary);}
-
-.date-card{
+.twin-card{
+  flex:1;
   background:var(--card-bg);
   border:1px solid var(--border);
-  border-radius:14px;
-  margin-bottom:10px;
-  box-shadow:0 1px 2px rgba(16,24,40,0.05);
-  overflow:hidden;
+  border-radius:12px;
+  padding:16px 14px;
+  text-align:center;
 }
-.date-btn{
+.twin-icon{
+  width:36px;
+  height:36px;
+  border-radius:50%;
+  margin:0 auto 8px;
   display:flex;
-  align-items:center;
-  justify-content:space-between;
-  width:100%;
-  background:none;
-  border:none;
-  text-align:left;
-  padding:15px 16px;
-  font-size:14.5px;
-  font-weight:700;
-  color:var(--text);
-  cursor:pointer;
-}
-.date-btn.today{color:var(--primary);}
-.date-card.empty{box-shadow:none;}
-.date-card.empty .date-btn{cursor:default;color:var(--muted);font-weight:500;}
-.date-row-right{display:flex;align-items:center;gap:8px;}
-.date-btn .count{
-  font-weight:600;
-  color:var(--muted);
-  font-size:11.5px;
-  background:#eef0f4;
-  border-radius:999px;
-  padding:2px 8px;
-}
-.date-btn.today .count{background:#e6eafc;color:var(--primary);}
-.date-card.empty .count{background:transparent;padding:0;}
-.date-btn .chev{color:var(--muted);font-size:16px;transition:transform 0.15s ease;}
-.date-card.open .chev{transform:rotate(90deg);}
-
-.date-body{
-  padding:0 14px 14px;
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-  border-top:1px solid var(--border);
-  padding-top:10px;
-}
-.date-body.hidden{display:none;}
-.date-body .record-item{margin-bottom:0;}
-
-/* 하루 기록이 많을 때(3건 초과) 나타나는 더보기/접기 타일 */
-.more-tile{
-  display:flex;
-  flex-direction:column;
   align-items:center;
   justify-content:center;
-  gap:4px;
-  border:1px dashed var(--primary);
-  border-radius:12px;
-  background:#f6f7fd;
-  color:var(--primary);
-  font-size:13px;
+}
+.twin-icon.temp{background:#eef0fb;color:var(--primary);}
+.twin-icon.humid{background:#dbeafe;color:#2563eb;}
+.twin-icon svg{width:18px;height:18px;}
+.twin-label{font-size:11.5px;color:var(--muted);font-weight:600;margin-bottom:2px;}
+.twin-value{font-size:24px;font-weight:800;color:var(--text);}
+.twin-value .u{font-size:13px;font-weight:700;color:var(--muted);}
+.metric-badge{
+  display:inline-block;
+  margin-top:6px;
+  font-size:10.5px;
   font-weight:700;
-  cursor:pointer;
-  padding:12px 14px;
+  padding:2px 8px;
+  border-radius:999px;
+  background:#eef0f4;
+  color:var(--muted);
 }
-.more-tile:hover{background:#eef1fb;}
-.more-tile .chev{font-size:15px;transition:transform 0.15s ease;}
-.more-tile.expanded .chev{transform:rotate(180deg);}
-/* 펼치면 나머지 기록들 뒤, 그 줄의 맨 끝(오른쪽)으로 이동합니다 */
-.more-tile.expanded{
-  order:999;
-  grid-column:-2 / -1;
-}
+.metric-badge.ok{background:var(--ok-bg);color:var(--ok);}
+.metric-badge.info{background:#dbeafe;color:#2563eb;}
+.metric-badge.danger{background:#fee2e2;color:var(--danger);}
 .record-top{
   display:flex;
   justify-content:space-between;
@@ -855,11 +812,7 @@ body.is-admin #drawerUserMgmt{display:block;}
   }
   .grid-spacer{grid-column:1;}
   .home-topline{grid-column:2;margin-bottom:14px;}
-  .records-card{grid-column:1;}
-
-  /* PC 폭에서는 모바일 아코디언 대신 기존 그리드+더보기 카드를 보여줍니다. */
-  .mobile-history{display:none;}
-  .records-card{display:block;}
+  .metric-card-wrap{grid-column:1;}
 
   /* 웹(PC)에서는 온도체크 관련 탭(서버실/장비실)을 기본적으로 숨깁니다(점검 제출은
      모바일에서만 하도록 설계). 다만 관리자 계정으로 로그인한 경우에는 PC에서도

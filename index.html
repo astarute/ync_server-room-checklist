@@ -134,38 +134,27 @@
         </div>
       </div>
 
-      <!-- PC: 카드 안에 제목 + 날짜별 가로 그리드 -->
-      <div class="card records-card">
-        <div class="section-header">
-          <h2>최근 점검 기록</h2>
-          <button id="refreshBtn" class="icon-btn" aria-label="새로고침">
-            <svg id="refreshIcon" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 12a8 8 0 0 1 14.5-4.6M20 12a8 8 0 0 1-14.5 4.6"/>
-              <polyline points="18.5 3 18.5 8 13.5 8"/>
-              <polyline points="5.5 21 5.5 16 10.5 16"/>
-            </svg>
-          </button>
+      <!-- 실시간 온습도: Tapo 허브 → 중계 PC → 서버(getLatestTemp)로 받아온 최신 값을 보여줍니다. -->
+      <div class="card metric-card-wrap">
+        <div class="metric-twin">
+          <div class="twin-card">
+            <div class="twin-icon temp">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0z"/></svg>
+            </div>
+            <div class="twin-label">온도</div>
+            <div class="twin-value" id="metricTempValue">--<span class="u">°C</span></div>
+            <span class="metric-badge" id="metricTempBadge">측정 전</span>
+          </div>
+          <div class="twin-card">
+            <div class="twin-icon humid">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5s6.5 7.1 6.5 11.5a6.5 6.5 0 1 1-13 0C5.5 9.6 12 2.5 12 2.5z"/></svg>
+            </div>
+            <div class="twin-label">습도</div>
+            <div class="twin-value" id="metricHumidValue">--<span class="u">%</span></div>
+            <span class="metric-badge" id="metricHumidBadge">측정 전</span>
+          </div>
         </div>
-        <div id="historyPcBody">
-          <p class="muted small">기록을 불러오는 중...</p>
-        </div>
-      </div>
-
-      <!-- 모바일: 상자 없이 제목 + 새로고침, 그 아래 날짜별 버튼(아코디언) -->
-      <div class="mobile-history">
-        <div class="section-header-plain">
-          <h2>최근 점검 기록</h2>
-          <button id="refreshBtnMobile" class="icon-btn" aria-label="새로고침">
-            <svg id="refreshIconMobile" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 12a8 8 0 0 1 14.5-4.6M20 12a8 8 0 0 1-14.5 4.6"/>
-              <polyline points="18.5 3 18.5 8 13.5 8"/>
-              <polyline points="5.5 21 5.5 16 10.5 16"/>
-            </svg>
-          </button>
-        </div>
-        <div id="historyMobileBody">
-          <p class="muted small">기록을 불러오는 중...</p>
-        </div>
+        <p class="metric-meta" id="metricMeta">아직 온습도계가 연결되지 않았습니다.</p>
       </div>
     </div>
   </section>

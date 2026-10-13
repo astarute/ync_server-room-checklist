@@ -241,7 +241,8 @@ function init() {
     qs('homeUserAvatar').innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="4"/><path d="M12 13.5c-5 0-8 2.7-8 6.5v1h16v-1c0-3.8-3-6.5-8-6.5z"/></svg>';
     qs('homeUserName').textContent = user.name + (user.team ? ` · ${user.team}` : '');
     startClock();
-    loadHistory();
+    loadLatestMetrics();
+    startMetricsPolling();
     flushPending();
   }
 
@@ -274,6 +275,16 @@ function startClock() {
   setInterval(tick, 1000);
 }
 
+// 중계 PC가 30~60초 간격으로 온도를 올려주는 것에 맞춰, 홈 화면에서도 30초마다
+// 최신 값을 다시 불러옵니다. init()은 로그인/로그아웃마다 다시 불리므로, 타이머가
+// 중복으로 쌓이지 않도록 한 번만 시작합니다.
+let metricsPollingStarted = false;
+function startMetricsPolling() {
+  if (metricsPollingStarted) return;
+  metricsPollingStarted = true;
+  setInterval(loadLatestMetrics, 30000);
+}
+
 function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -299,7 +310,7 @@ function bindEvents() {
   qs('setAccountMgmtBtn').addEventListener('click', openAccountDevices);
   qs('menuBtn').addEventListener('click', openDrawer);
   qs('drawerOverlay').addEventListener('click', closeDrawer);
-  qs('drawerHome').addEventListener('click', () => { closeDrawer(); showScreen('screen-home'); loadHistory(); });
+  qs('drawerHome').addEventListener('click', () => { closeDrawer(); showScreen('screen-home'); loadLatestMetrics(); });
   qs('drawerServerRoom').addEventListener('click', () => { closeDrawer(); showScreen('screen-server'); });
   qs('drawerEquipRoom').addEventListener('click', () => { closeDrawer(); showScreen('screen-equipment'); });
   qs('drawerRecords').addEventListener('click', () => { closeDrawer(); openRecords(); });
@@ -321,18 +332,8 @@ function bindEvents() {
   qs('manualBtn').addEventListener('click', () => startManualCheckIn('server'));
   qs('scanBtn2').addEventListener('click', () => startNfcScan('equipment'));
   qs('manualBtn2').addEventListener('click', () => startManualCheckIn('equipment'));
-  // PC용, 모바일용 새로고침 버튼 둘 다 같은 동작을 합니다 (화면 폭에 따라 둘 중 하나만 보임).
-  qs('refreshBtn').addEventListener('click', () => { spinRefreshIcon(); loadHistory(); });
-  qs('refreshBtnMobile').addEventListener('click', () => { spinRefreshIcon(); loadHistory(); });
-  ['refreshIcon', 'refreshIconMobile'].forEach((iconId) => {
-    qs(iconId).addEventListener('transitionend', (e) => {
-      if (e.propertyName !== 'transform') return;
-      qs('refreshBtn').disabled = false;
-      qs('refreshBtnMobile').disabled = false;
-    });
-  });
   qs('cancelBtn').addEventListener('click', () => showScreen('screen-home'));
-  qs('doneHomeBtn').addEventListener('click', () => { showScreen('screen-home'); loadHistory(); });
+  qs('doneHomeBtn').addEventListener('click', () => { showScreen('screen-home'); loadLatestMetrics(); });
   qs('checklistForm').addEventListener('submit', onSubmitChecklist);
   qs('fPhoto').addEventListener('change', onPhotoChange);
 
@@ -395,18 +396,6 @@ function rippleEffect(el) {
     el.classList.remove('ripple-active');
     ripple.remove();
   }, 1350);
-}
-
-// 새로고침 아이콘을 클릭할 때마다 항상 화살표 방향(정방향)으로만 720도씩 더 돌립니다.
-// 값을 절대 줄이지 않고 누적만 시키기 때문에 역방향으로 튀는 일이 없고, 회전이 끝날
-// 때까지는 버튼을 잠가서 연타해도 애니메이션이 꼬이지 않게 합니다.
-let refreshRotation = 0;
-function spinRefreshIcon() {
-  qs('refreshBtn').disabled = true;
-  qs('refreshBtnMobile').disabled = true;
-  refreshRotation += 720;
-  qs('refreshIcon').style.transform = `rotate(${refreshRotation}deg)`;
-  qs('refreshIconMobile').style.transform = `rotate(${refreshRotation}deg)`;
 }
 
 function onOnboardSave() {
@@ -671,7 +660,7 @@ function openSettings() {
 function onSettingsSave() {
   toast('저장되었습니다.');
   showScreen('screen-home');
-  loadHistory();
+  loadLatestMetrics();
 }
 
 /* ---------------- 계정관리: 이 계정에 연결된 기기 ----------------
@@ -1105,195 +1094,79 @@ async function flushPending() {
   saveJSON(LS.pending, remaining);
   if (remaining.length !== list.length) {
     toast(`밀렸던 기록 ${list.length - remaining.length}건이 전송되었습니다.`);
-    loadHistory();
   }
 }
 
-/* ---------------- 최근 기록 ---------------- */
+/* ---------------- 실시간 온습도 ----------------
+ * 중계 PC(temp_monitor.py)가 Tapo 허브에서 읽은 온도/습도를 30~60초마다 서버
+ * (action=tempUpdate)로 올리면, 여기서는 action=getLatestTemp로 그 최신 값을
+ * 받아와 홈 화면의 온도/습도 카드에 채워 넣습니다. 임계값은 중계 스크립트의
+ * config.ini(threshold_c)와 맞춰서 바꿔주세요.
+ */
+const TEMP_WARN_C = 28;
+const HUMIDITY_LOW_PCT = 30;
+const HUMIDITY_HIGH_PCT = 60;
 
-async function loadHistory() {
+async function loadLatestMetrics() {
   const endpoint = getEndpoint();
-  const pending = loadJSON(LS.pending, []);
-
   if (!endpoint) {
-    const msg = '<p class="muted small">설정에서 서버 저장 주소를 입력하면 최근 기록을 볼 수 있습니다.</p>';
-    qs('historyPcBody').innerHTML = msg;
-    qs('historyMobileBody').innerHTML = msg;
-    renderPendingBadge(pending);
+    renderMetrics(null);
+    return;
+  }
+  try {
+    const res = await fetch(endpoint + (endpoint.includes('?') ? '&' : '?') + 'action=getLatestTemp');
+    const data = await res.json();
+    renderMetrics(data && data.ok ? data : null);
+  } catch (err) {
+    // 네트워크 문제로 못 받아온 경우, 화면에 있던 마지막 값은 그대로 두고 조용히 넘어갑니다.
+  }
+}
+
+function renderMetrics(data) {
+  const tempValueEl = qs('metricTempValue');
+  if (!tempValueEl) return; // 홈 화면이 아직 렌더되기 전이면 조용히 무시
+  const tempBadgeEl = qs('metricTempBadge');
+  const humidValueEl = qs('metricHumidValue');
+  const humidBadgeEl = qs('metricHumidBadge');
+  const metaEl = qs('metricMeta');
+
+  if (!data || data.temperature === null || data.temperature === undefined) {
+    tempValueEl.innerHTML = '--<span class="u">°C</span>';
+    tempBadgeEl.textContent = '측정 전';
+    tempBadgeEl.className = 'metric-badge';
+    humidValueEl.innerHTML = '--<span class="u">%</span>';
+    humidBadgeEl.textContent = '측정 전';
+    humidBadgeEl.className = 'metric-badge';
+    if (metaEl) metaEl.textContent = '아직 온습도계가 연결되지 않았습니다.';
     return;
   }
 
-  try {
-    // 날짜별로 묶어서 보여주다 보니 하루당 기록이 있는지 판단하려면 예전보다 더 넉넉히 받아둡니다.
-    const res = await fetch(endpoint + (endpoint.includes('?') ? '&' : '?') + 'action=list&limit=40');
-    const data = await res.json();
-    const records = (data && data.records) || [];
-    saveJSON(LS.historyCache, records);
-    renderHistory(records, pending);
-  } catch (err) {
-    const cached = loadJSON(LS.historyCache, []);
-    renderHistory(cached, pending, true);
-  }
-}
+  const temp = Number(data.temperature);
+  const over = temp >= TEMP_WARN_C;
+  tempValueEl.innerHTML = `${temp.toFixed(1)}<span class="u">°C</span>`;
+  tempBadgeEl.textContent = over ? '경고' : '정상';
+  tempBadgeEl.className = 'metric-badge' + (over ? ' danger' : ' ok');
 
-function renderPendingBadge(pending) {
-  if (pending.length) {
-    const msg = `<p class="muted small">기기에 대기 중인 기록 ${pending.length}건 (온라인이 되면 자동 전송)</p>`;
-    qs('historyPcBody').innerHTML += msg;
-    qs('historyMobileBody').innerHTML += msg;
+  const humidity = data.humidity === null || data.humidity === undefined ? null : Number(data.humidity);
+  if (humidity === null) {
+    humidValueEl.innerHTML = '--<span class="u">%</span>';
+    humidBadgeEl.textContent = '측정 전';
+    humidBadgeEl.className = 'metric-badge';
+  } else {
+    humidValueEl.innerHTML = `${Math.round(humidity)}<span class="u">%</span>`;
+    const label = humidity < HUMIDITY_LOW_PCT ? '건조' : humidity > HUMIDITY_HIGH_PCT ? '습함' : '쾌적';
+    humidBadgeEl.textContent = label;
+    humidBadgeEl.className = 'metric-badge' + (label === '쾌적' ? ' info' : ' danger');
   }
-}
 
-// 홈 화면 "최근 점검 기록" 미리보기 설정: 오늘 + 주말을 뺀 평일 며칠치를 보여줄지,
-// 하루에 몇 건까지는 그냥 다 보여주고 그 이상이면 "더보기"로 접어둘지.
-const HOME_PREVIEW_DAYS = 5;
-const HOME_GROUP_LIMIT = 3;
-
-// 오늘(요일 상관없이 항상 포함) + 주말을 건너뛴 과거 평일들을, 최신순으로 count개 돌려줍니다.
-function homePreviewDates(count) {
-  const days = [];
-  const today = new Date();
-  days.push(new Date(today));
-  const cursor = new Date(today);
-  while (days.length < count) {
-    cursor.setDate(cursor.getDate() - 1);
-    const dow = cursor.getDay(); // 0=일, 6=토
-    if (dow !== 0 && dow !== 6) {
-      days.push(new Date(cursor));
-    }
+  if (metaEl) {
+    const ts = data.ts ? new Date(data.ts) : null;
+    metaEl.textContent = ts ? `${formatDateTime(ts).slice(11)} 기준` : '방금 갱신됨';
   }
-  return days;
 }
 
 function dateKeyOf(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-// 홈 화면 "최근 점검 기록"은 PC와 모바일이 서로 다른 방식으로 보여줍니다.
-// - PC(historyPcBody): 카드 안에서 날짜별로 가로 그리드, 3건 넘으면 더보기/접기
-// - 모바일(historyMobileBody): 상자 밖 제목 + 날짜별로 독립된 버튼, 눌러야 그 날짜 기록이 펼쳐짐
-// 화면 폭에 따라 둘 중 하나만 CSS로 보이게 하고(.records-card / .mobile-history),
-// 데이터는 같은 records 배열로 둘 다 채워둡니다.
-function renderHistory(records, pending, offline) {
-  const pcBody = qs('historyPcBody');
-  const mobileBody = qs('historyMobileBody');
-  pcBody.innerHTML = '';
-  mobileBody.innerHTML = '';
-
-  if (offline) {
-    [pcBody, mobileBody].forEach((wrap) => {
-      const p = document.createElement('p');
-      p.className = 'muted small';
-      p.textContent = '네트워크 연결이 안 되어 마지막으로 불러온 기록을 표시합니다.';
-      wrap.appendChild(p);
-    });
-  }
-
-  const todayKey = dateKeyOf(new Date());
-  const days = homePreviewDates(HOME_PREVIEW_DAYS);
-
-  days.forEach((d) => {
-    const key = dateKeyOf(d);
-    const isToday = key === todayKey;
-    const dayRecords = records.filter((r) => recordDateKey(r) === key);
-    const labelText = `${isToday ? '오늘 · ' : ''}${formatDateLabel(key)}`;
-
-    /* ---- PC: 날짜 라벨 + 가로 그리드 (3건 넘으면 더보기/접기) ---- */
-    const pcLabel = document.createElement('div');
-    pcLabel.className = 'section-label' + (isToday ? ' today' : '');
-    pcLabel.innerHTML = `${labelText} <span class="count">${dayRecords.length}건</span>`;
-    pcBody.appendChild(pcLabel);
-
-    const pcGroup = document.createElement('div');
-    pcGroup.className = 'date-records';
-
-    if (!dayRecords.length) {
-      const empty = document.createElement('div');
-      empty.className = 'record-item empty';
-      empty.textContent = '점검 기록 없음';
-      pcGroup.appendChild(empty);
-    } else {
-      const groupId = 'home-' + key;
-      dayRecords.forEach((r, idx) => {
-        const item = buildRecordItem(r);
-        if (idx >= HOME_GROUP_LIMIT) {
-          item.classList.add('hidden-extra');
-          item.dataset.group = groupId;
-        }
-        pcGroup.appendChild(item);
-      });
-
-      if (dayRecords.length > HOME_GROUP_LIMIT) {
-        const extraCount = dayRecords.length - HOME_GROUP_LIMIT;
-        const moreTile = document.createElement('div');
-        moreTile.className = 'more-tile';
-        moreTile.dataset.group = groupId;
-        moreTile.innerHTML = `<span class="more-label">더보기 (${extraCount}건 더)</span><span class="chev">⌄</span>`;
-        moreTile.addEventListener('click', () => toggleHomeGroup(groupId, extraCount));
-        pcGroup.appendChild(moreTile);
-      }
-    }
-    pcBody.appendChild(pcGroup);
-
-    /* ---- 모바일: 날짜별로 독립된 버튼(카드) — 누르면 그 아래로 전부 펼쳐짐 ---- */
-    const dateCard = document.createElement('div');
-    dateCard.className = 'date-card' + (dayRecords.length ? '' : ' empty');
-
-    if (!dayRecords.length) {
-      const row = document.createElement('div');
-      row.className = 'date-btn' + (isToday ? ' today' : '');
-      row.innerHTML = `<span>${labelText}</span><span class="count">0건</span>`;
-      dateCard.appendChild(row);
-    } else {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'date-btn' + (isToday ? ' today' : '');
-      btn.innerHTML = `<span>${labelText}</span><span class="date-row-right"><span class="count">${dayRecords.length}건</span><span class="chev">›</span></span>`;
-
-      const body = document.createElement('div');
-      body.className = 'date-body hidden';
-      dayRecords.forEach((r) => body.appendChild(buildRecordItem(r)));
-
-      btn.addEventListener('click', () => {
-        const opening = body.classList.contains('hidden');
-        body.classList.toggle('hidden', !opening);
-        dateCard.classList.toggle('open', opening);
-      });
-
-      dateCard.appendChild(btn);
-      dateCard.appendChild(body);
-    }
-    mobileBody.appendChild(dateCard);
-  });
-
-  if (!records.length && !pending.length) {
-    [pcBody, mobileBody].forEach((wrap) => {
-      const p = document.createElement('p');
-      p.className = 'muted small';
-      p.textContent = '아직 점검 기록이 없습니다.';
-      wrap.appendChild(p);
-    });
-  }
-
-  if (pending.length) {
-    renderPendingBadge(pending);
-  }
-}
-
-// 날짜별로 3건 넘게 있을 때 나타나는 "더보기"를 누르면 나머지를 펼치고,
-// 다시 누르면(이제 "접기") 접습니다. 펼쳐지면 타일이 그 날짜 줄의 맨 끝(오른쪽)으로 이동합니다.
-function toggleHomeGroup(groupId, extraCount) {
-  const tile = document.querySelector(`.more-tile[data-group="${groupId}"]`);
-  if (!tile) return;
-  // 처음 펼칠 때 이 요소들에서 hidden-extra 클래스를 떼어내므로, 다시 접을 때 찾으려면
-  // (.hidden-extra가 이미 없는 상태이니) hidden-extra 유무와 상관없이 data-group으로만 찾아야 합니다.
-  // 이전에는 ".record-item.hidden-extra[data-group=...]"로 찾아서, 펼친 뒤 두 번째 클릭(접기)
-  // 때는 조건에 안 맞아 아무것도 못 찾는 버그가 있었습니다.
-  const extras = document.querySelectorAll(`.record-item[data-group="${groupId}"]`);
-  const expanding = !tile.classList.contains('expanded');
-  tile.classList.toggle('expanded', expanding);
-  extras.forEach((el) => el.classList.toggle('hidden-extra', !expanding));
-  tile.querySelector('.more-label').textContent = expanding ? '접기' : `더보기 (${extraCount}건 더)`;
 }
 
 /* ---------------- 전체 기록 화면 ----------------
